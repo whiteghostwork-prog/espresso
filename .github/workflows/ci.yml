@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout espresso
+        uses: actions/checkout@v4
+
+      - name: Checkout peaberry
+        uses: actions/checkout@v4
+        with:
+          repository: whiteghostwork-prog/peaberry
+          path: peaberry
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            libvulkan-dev \
+            vulkan-tools \
+            glslang-tools \
+            libwayland-dev \
+            libxkbcommon-dev
+
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DPEABERRY_SOURCE_DIR=${{ github.workspace }}/peaberry \
+            -DPEABERRY_ENABLE_VALIDATION=OFF
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Benchmark smoke
+        run: |
+          ./build/benchmarks/peaberry_bench clear --frames 10 --warmup 2
+          ./build/benchmarks/peaberry_bench sphere --frames 10 --warmup 2 --width 256 --height 256
+          ./build/benchmarks/peaberry_bench gltf assets/models/test_cube.gltf --frames 10 --warmup 2 --width 256 --height 256
