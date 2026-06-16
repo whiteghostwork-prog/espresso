@@ -333,6 +333,10 @@ bool pb_bench_target_run_frame(pb_bench_target *target, pb_bench_frame *out_fram
     pb_rhi_query_pool_cmd_reset(cmd, target->query_pool);
     pb_rhi_query_pool_write_timestamp(cmd, target->query_pool, PB_RHI_TS_CMD_START, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
 
+    if (target->scenario->pre_record) {
+        target->scenario->pre_record(cmd, target->extent, target->scenario->user_data);
+    }
+
     VkClearValue clears[2] = {
         { .color = { { 0.02f, 0.02f, 0.025f, 1.0f } } },
         { .depthStencil = { 1.0f, 0 } },

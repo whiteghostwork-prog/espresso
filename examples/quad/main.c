@@ -80,6 +80,7 @@ int main(void)
         .vert_spv_path = g_vert_spv,
         .frag_spv_path = g_frag_spv,
         .texture_path = g_texture_path,
+        .rasterization_samples = pb_example_wsi_msaa_samples(wsi),
     };
 
     pb_quad_pass *quad = pb_quad_pass_create(&pass_desc);

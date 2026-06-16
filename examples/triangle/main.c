@@ -73,6 +73,7 @@ int main(void)
         .render_pass = pb_example_wsi_render_pass(wsi),
         .vert_spv_path = g_vert_spv,
         .frag_spv_path = g_frag_spv,
+        .rasterization_samples = pb_example_wsi_msaa_samples(wsi),
     };
 
     pb_triangle_pass *triangle = pb_triangle_pass_create(&pass_desc);

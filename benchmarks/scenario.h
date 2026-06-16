@@ -26,6 +26,7 @@ typedef struct pb_bench_scenario {
     const char *name;
     bool (*setup)(struct pb_bench_scenario *scenario, pb_context *context, VkRenderPass render_pass, VkExtent2D extent);
     void (*teardown)(struct pb_bench_scenario *scenario);
+    pb_bench_record_fn pre_record;
     pb_bench_record_fn record;
     void *user_data;
     pb_bench_scenario_info info;

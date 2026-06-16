@@ -104,6 +104,16 @@ static void gltf_teardown(pb_bench_scenario *scenario)
     scenario->user_data = NULL;
 }
 
+static void gltf_pre_record(VkCommandBuffer cmd, VkExtent2D extent, void *user_data)
+{
+    const gltf_state *state = user_data;
+    if (!state || !state->pass || !state->scene) {
+        return;
+    }
+
+    pb_pbr_forward_pass_record_shadow_map(state->pass, cmd, extent, state->scene);
+}
+
 static void gltf_record(VkCommandBuffer cmd, VkExtent2D extent, void *user_data)
 {
     const gltf_state *state = user_data;
@@ -128,6 +138,7 @@ bool pb_bench_scenario_gltf_init(
     scenario->name = "gltf";
     scenario->setup = gltf_setup;
     scenario->teardown = gltf_teardown;
+    scenario->pre_record = gltf_pre_record;
     scenario->record = gltf_record;
     scenario->user_data = (void *)model_path;
     (void)context;

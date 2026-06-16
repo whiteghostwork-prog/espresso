@@ -55,6 +55,10 @@ struct pb_example_wsi {
     VkImage depth_image;
     VkDeviceMemory depth_memory;
     VkImageView depth_view;
+    VkSampleCountFlagBits msaa_samples;
+    VkImage msaa_color_image;
+    VkDeviceMemory msaa_color_memory;
+    VkImageView msaa_color_view;
     bool stats_enabled;
     bool stats_have_gpu_sample;
     pb_rhi_query_pool *stats_query_pool;
@@ -64,6 +68,8 @@ struct pb_example_wsi {
     pb_frame_metrics stats_last_metrics;
     pb_frame_metrics_accumulator stats_accumulator;
     char base_title[128];
+    pb_example_wsi_pre_render_fn pre_render;
+    void *pre_render_user_data;
 };
 
 static void framebuffer_size_callback(GLFWwindow *window, int width, int height)
@@ -96,6 +102,24 @@ static bool choose_depth_format(VkPhysicalDevice physical_device, VkFormat *out_
     }
 
     return false;
+}
+
+static void destroy_msaa_color_resources(pb_example_wsi *wsi)
+{
+    VkDevice device = pb_context_device(wsi->context);
+
+    if (wsi->msaa_color_view) {
+        vkDestroyImageView(device, wsi->msaa_color_view, NULL);
+        wsi->msaa_color_view = VK_NULL_HANDLE;
+    }
+    if (wsi->msaa_color_image) {
+        vkDestroyImage(device, wsi->msaa_color_image, NULL);
+        wsi->msaa_color_image = VK_NULL_HANDLE;
+    }
+    if (wsi->msaa_color_memory) {
+        vkFreeMemory(device, wsi->msaa_color_memory, NULL);
+        wsi->msaa_color_memory = VK_NULL_HANDLE;
+    }
 }
 
 static void destroy_depth_resources(pb_example_wsi *wsi)
@@ -132,7 +156,7 @@ static bool create_depth_resources(pb_example_wsi *wsi)
         .extent = { wsi->extent.width, wsi->extent.height, 1 },
         .mipLevels = 1,
         .arrayLayers = 1,
-        .samples = VK_SAMPLE_COUNT_1_BIT,
+        .samples = wsi->msaa_samples,
         .tiling = VK_IMAGE_TILING_OPTIMAL,
         .usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
         .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
@@ -200,8 +224,167 @@ static bool create_depth_resources(pb_example_wsi *wsi)
     return true;
 }
 
+static bool create_msaa_color_resources(pb_example_wsi *wsi)
+{
+    if (wsi->msaa_samples == VK_SAMPLE_COUNT_1_BIT) {
+        return true;
+    }
+
+    VkPhysicalDevice physical_device = pb_context_physical_device(wsi->context);
+    VkDevice device = pb_context_device(wsi->context);
+
+    VkImageCreateInfo image_info = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType = VK_IMAGE_TYPE_2D,
+        .format = wsi->format,
+        .extent = { wsi->extent.width, wsi->extent.height, 1 },
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .samples = wsi->msaa_samples,
+        .tiling = VK_IMAGE_TILING_OPTIMAL,
+        .usage = VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+    };
+
+    if (vkCreateImage(device, &image_info, NULL, &wsi->msaa_color_image) != VK_SUCCESS) {
+        return false;
+    }
+
+    VkMemoryRequirements mem_reqs;
+    vkGetImageMemoryRequirements(device, wsi->msaa_color_image, &mem_reqs);
+
+    VkPhysicalDeviceMemoryProperties mem_props;
+    vkGetPhysicalDeviceMemoryProperties(physical_device, &mem_props);
+
+    uint32_t mem_type = UINT32_MAX;
+    for (uint32_t i = 0; i < mem_props.memoryTypeCount; ++i) {
+        if ((mem_reqs.memoryTypeBits & (1u << i)) &&
+            (mem_props.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
+            mem_type = i;
+            break;
+        }
+    }
+
+    if (mem_type == UINT32_MAX) {
+        vkDestroyImage(device, wsi->msaa_color_image, NULL);
+        wsi->msaa_color_image = VK_NULL_HANDLE;
+        return false;
+    }
+
+    VkMemoryAllocateInfo alloc_info = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize = mem_reqs.size,
+        .memoryTypeIndex = mem_type,
+    };
+
+    if (vkAllocateMemory(device, &alloc_info, NULL, &wsi->msaa_color_memory) != VK_SUCCESS) {
+        vkDestroyImage(device, wsi->msaa_color_image, NULL);
+        wsi->msaa_color_image = VK_NULL_HANDLE;
+        return false;
+    }
+
+    if (vkBindImageMemory(device, wsi->msaa_color_image, wsi->msaa_color_memory, 0) != VK_SUCCESS) {
+        destroy_msaa_color_resources(wsi);
+        return false;
+    }
+
+    VkImageViewCreateInfo view_info = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .image = wsi->msaa_color_image,
+        .viewType = VK_IMAGE_VIEW_TYPE_2D,
+        .format = wsi->format,
+        .subresourceRange = {
+            .aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+            .levelCount = 1,
+            .layerCount = 1,
+        },
+    };
+
+    if (vkCreateImageView(device, &view_info, NULL, &wsi->msaa_color_view) != VK_SUCCESS) {
+        destroy_msaa_color_resources(wsi);
+        return false;
+    }
+
+    return true;
+}
+
 static bool create_render_pass(pb_example_wsi *wsi)
 {
+    if (wsi->msaa_samples != VK_SAMPLE_COUNT_1_BIT) {
+        VkAttachmentDescription attachments[3] = {
+            {
+                .format = wsi->format,
+                .samples = wsi->msaa_samples,
+                .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+                .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                .finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            },
+            {
+                .format = wsi->format,
+                .samples = VK_SAMPLE_COUNT_1_BIT,
+                .loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+                .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
+                .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                .finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+            },
+            {
+                .format = wsi->depth_format,
+                .samples = wsi->msaa_samples,
+                .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
+                .storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+                .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+                .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+                .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                .finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            },
+        };
+
+        VkAttachmentReference color_ref = {
+            .attachment = 0,
+            .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        };
+        VkAttachmentReference resolve_ref = {
+            .attachment = 1,
+            .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        };
+        VkAttachmentReference depth_ref = {
+            .attachment = 2,
+            .layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+        };
+
+        VkSubpassDescription subpass = {
+            .pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
+            .colorAttachmentCount = 1,
+            .pColorAttachments = &color_ref,
+            .pResolveAttachments = &resolve_ref,
+            .pDepthStencilAttachment = &depth_ref,
+        };
+
+        VkSubpassDependency dependency = {
+            .srcSubpass = VK_SUBPASS_EXTERNAL,
+            .dstSubpass = 0,
+            .srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+                VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+            .dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT |
+                VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
+            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+        };
+
+        VkRenderPassCreateInfo render_pass_info = {
+            .sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+            .attachmentCount = 3,
+            .pAttachments = attachments,
+            .subpassCount = 1,
+            .pSubpasses = &subpass,
+            .dependencyCount = 1,
+            .pDependencies = &dependency,
+        };
+
+        return vkCreateRenderPass(pb_context_device(wsi->context), &render_pass_info, NULL, &wsi->render_pass) ==
+            VK_SUCCESS;
+    }
+
     VkAttachmentDescription attachments[2] = {
         {
             .format = wsi->format,
@@ -275,6 +458,25 @@ static bool create_framebuffers(pb_example_wsi *wsi)
     }
 
     for (uint32_t i = 0; i < wsi->image_count; ++i) {
+        if (wsi->msaa_samples != VK_SAMPLE_COUNT_1_BIT) {
+            VkImageView attachments[] = { wsi->msaa_color_view, wsi->image_views[i], wsi->depth_view };
+            VkFramebufferCreateInfo fb_info = {
+                .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+                .renderPass = wsi->render_pass,
+                .attachmentCount = 3,
+                .pAttachments = attachments,
+                .width = wsi->extent.width,
+                .height = wsi->extent.height,
+                .layers = 1,
+            };
+
+            if (vkCreateFramebuffer(pb_context_device(wsi->context), &fb_info, NULL, &wsi->framebuffers[i]) !=
+                VK_SUCCESS) {
+                return false;
+            }
+            continue;
+        }
+
         VkImageView attachments[] = { wsi->image_views[i], wsi->depth_view };
         VkFramebufferCreateInfo fb_info = {
             .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
@@ -299,6 +501,7 @@ static void destroy_swapchain_resources(pb_example_wsi *wsi)
 {
     VkDevice device = pb_context_device(wsi->context);
 
+    destroy_msaa_color_resources(wsi);
     destroy_depth_resources(wsi);
 
     if (wsi->framebuffers) {
@@ -509,6 +712,10 @@ static bool create_swapchain_internal(pb_example_wsi *wsi, uint32_t width, uint3
         return false;
     }
 
+    if (!create_msaa_color_resources(wsi)) {
+        return false;
+    }
+
     return create_framebuffers(wsi);
 }
 
@@ -543,6 +750,8 @@ static bool init_swapchain(pb_example_wsi *wsi)
     if (!choose_depth_format(pb_context_physical_device(wsi->context), &wsi->depth_format)) {
         return false;
     }
+
+    wsi->msaa_samples = pb_context_choose_msaa_samples(wsi->context, VK_SAMPLE_COUNT_4_BIT);
 
     if (!create_render_pass(wsi)) {
         return false;
@@ -852,16 +1061,32 @@ bool pb_example_wsi_begin_frame(pb_example_wsi *wsi, float r, float g, float b, 
             VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
     }
 
-    VkClearValue clears[2] = {
-        { .color = { { wsi->clear_color[0], wsi->clear_color[1], wsi->clear_color[2], wsi->clear_color[3] } } },
-        { .depthStencil = { 1.0f, 0 } },
-    };
+    if (wsi->pre_render) {
+        wsi->pre_render(cmd, wsi->extent, wsi->pre_render_user_data);
+    }
+
+    VkClearValue clears[3];
+    uint32_t clear_count = 2;
+    if (wsi->msaa_samples != VK_SAMPLE_COUNT_1_BIT) {
+        clears[0].color = (VkClearColorValue){
+            { wsi->clear_color[0], wsi->clear_color[1], wsi->clear_color[2], wsi->clear_color[3] },
+        };
+        clears[1] = (VkClearValue){ .color = { { 0.0f, 0.0f, 0.0f, 0.0f } } };
+        clears[2].depthStencil = (VkClearDepthStencilValue){ 1.0f, 0 };
+        clear_count = 3;
+    } else {
+        clears[0].color = (VkClearColorValue){
+            { wsi->clear_color[0], wsi->clear_color[1], wsi->clear_color[2], wsi->clear_color[3] },
+        };
+        clears[1].depthStencil = (VkClearDepthStencilValue){ 1.0f, 0 };
+    }
+
     VkRenderPassBeginInfo rp_begin = {
         .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
         .renderPass = wsi->render_pass,
         .framebuffer = wsi->framebuffers[wsi->current_image],
         .renderArea = { .extent = wsi->extent },
-        .clearValueCount = 2,
+        .clearValueCount = clear_count,
         .pClearValues = clears,
     };
 
@@ -883,6 +1108,15 @@ VkRenderPass pb_example_wsi_render_pass(const pb_example_wsi *wsi)
     return wsi ? wsi->render_pass : VK_NULL_HANDLE;
 }
 
+VkSampleCountFlagBits pb_example_wsi_msaa_samples(const pb_example_wsi *wsi)
+{
+    if (!wsi || wsi->msaa_samples == 0) {
+        return VK_SAMPLE_COUNT_1_BIT;
+    }
+
+    return wsi->msaa_samples;
+}
+
 VkExtent2D pb_example_wsi_extent(const pb_example_wsi *wsi)
 {
     VkExtent2D extent = {0, 0};
@@ -898,6 +1132,19 @@ VkCommandBuffer pb_example_wsi_command_buffer(const pb_example_wsi *wsi)
         return VK_NULL_HANDLE;
     }
     return wsi->command_buffers[wsi->frame_index];
+}
+
+void pb_example_wsi_set_pre_render(
+    pb_example_wsi *wsi,
+    pb_example_wsi_pre_render_fn callback,
+    void *user_data)
+{
+    if (!wsi) {
+        return;
+    }
+
+    wsi->pre_render = callback;
+    wsi->pre_render_user_data = user_data;
 }
 
 bool pb_example_wsi_end_frame(pb_example_wsi *wsi)

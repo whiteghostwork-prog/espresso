@@ -92,6 +92,7 @@ int main(void)
         .metallic_factor = 1.0f,
         .roughness_factor = 1.0f,
         .exposure = 1.2f,
+        .rasterization_samples = pb_example_wsi_msaa_samples(wsi),
     };
 
     pb_sphere_pass *sphere = pb_sphere_pass_create(&pass_desc);

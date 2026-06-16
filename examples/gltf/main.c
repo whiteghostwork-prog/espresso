@@ -27,6 +27,21 @@ static char g_frag_spv[512];
 
 static double g_scroll_y;
 
+typedef struct gltf_viewer_ctx {
+    pb_pbr_forward_pass *pass;
+    pb_gltf_scene *scene;
+} gltf_viewer_ctx;
+
+static void gltf_pre_render(VkCommandBuffer cmd, VkExtent2D extent, void *user_data)
+{
+    const gltf_viewer_ctx *ctx = user_data;
+    if (!ctx || !ctx->pass || !ctx->scene) {
+        return;
+    }
+
+    pb_pbr_forward_pass_record_shadow_map(ctx->pass, cmd, extent, ctx->scene);
+}
+
 static void gltf_scroll_callback(GLFWwindow *window, double xoffset, double yoffset)
 {
     (void)window;
@@ -46,11 +61,13 @@ static void print_usage(const char *prog)
     fprintf(stderr, "  Example: %s assets/models/test_cube.gltf\n", prog);
     fprintf(stderr, "  Khronos sample: scripts/download_damaged_helmet.sh\n");
     fprintf(stderr, "  Rigged sample: scripts/download_rigged_simple.sh\n");
+    fprintf(stderr, "  Controls: left-drag orbit, scroll/Q/E zoom, S shadow debug, Esc quit\n");
 }
 
 int main(int argc, char **argv)
 {
     bool show_stats = false;
+    bool shadow_debug = false;
     int clip_index = 0;
     const char *model_path = NULL;
 
@@ -132,6 +149,7 @@ int main(int argc, char **argv)
             .ibl_equirect_hdr_path = NULL,
             .exposure = 1.2f,
             .scene = scene,
+            .rasterization_samples = pb_example_wsi_msaa_samples(wsi),
         });
     if (!pass || !pb_pbr_forward_pass_scene_is_bound(pass)) {
         fprintf(stderr, "Failed to create PBR forward pass (scene material binding failed)\n");
@@ -152,10 +170,18 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    gltf_viewer_ctx viewer_ctx = {
+        .pass = pass,
+        .scene = scene,
+    };
+    pb_example_wsi_set_pre_render(wsi, gltf_pre_render, &viewer_ctx);
+    pb_pbr_forward_pass_set_shadow_debug(pass, shadow_debug);
+
     GLFWwindow *window = pb_example_wsi_window(wsi);
     glfwSetScrollCallback(window, gltf_scroll_callback);
     double prev_mouse_x = 0.0, prev_mouse_y = 0.0;
     bool first_mouse = true;
+    bool key_s_was_down = false;
     double prev_time = glfwGetTime();
 
     while (!pb_example_wsi_should_close(wsi)) {
@@ -164,6 +190,13 @@ int main(int argc, char **argv)
         if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
             glfwSetWindowShouldClose(window, GLFW_TRUE);
         }
+
+        const bool key_s_down = glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS;
+        if (key_s_down && !key_s_was_down) {
+            shadow_debug = !shadow_debug;
+            pb_pbr_forward_pass_set_shadow_debug(pass, shadow_debug);
+        }
+        key_s_was_down = key_s_down;
 
         /* orbit camera input */
         const double now = glfwGetTime();

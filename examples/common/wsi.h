@@ -27,6 +27,8 @@
 
 typedef struct pb_example_wsi pb_example_wsi;
 
+typedef void (*pb_example_wsi_pre_render_fn)(VkCommandBuffer cmd, VkExtent2D extent, void *user_data);
+
 typedef struct pb_example_wsi_desc {
     pb_context *context;
     uint32_t width;
@@ -45,7 +47,13 @@ void *pb_example_wsi_window(const pb_example_wsi *wsi);
 bool pb_example_wsi_begin_frame(pb_example_wsi *wsi, float r, float g, float b, float a);
 bool pb_example_wsi_end_frame(pb_example_wsi *wsi);
 
+void pb_example_wsi_set_pre_render(
+    pb_example_wsi *wsi,
+    pb_example_wsi_pre_render_fn callback,
+    void *user_data);
+
 VkRenderPass pb_example_wsi_render_pass(const pb_example_wsi *wsi);
+VkSampleCountFlagBits pb_example_wsi_msaa_samples(const pb_example_wsi *wsi);
 VkExtent2D pb_example_wsi_extent(const pb_example_wsi *wsi);
 VkCommandBuffer pb_example_wsi_command_buffer(const pb_example_wsi *wsi);
 
