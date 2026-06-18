@@ -15,6 +15,7 @@
 
 typedef struct pb_bench_scenario_info {
     uint32_t draw_calls;
+    uint32_t visible_draw_calls;
     uint32_t index_count;
     uint32_t material_count;
     uint32_t pixels_shaded;

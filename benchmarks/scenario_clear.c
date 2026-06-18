@@ -13,6 +13,7 @@ static bool clear_setup(pb_bench_scenario *scenario, pb_context *context, VkRend
     (void)render_pass;
 
     scenario->info.draw_calls = 0;
+    scenario->info.visible_draw_calls = 0;
     scenario->info.index_count = 0;
     scenario->info.material_count = 0;
     scenario->info.pixels_shaded = extent.width * extent.height;

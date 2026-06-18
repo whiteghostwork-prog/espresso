@@ -61,6 +61,7 @@ static bool sphere_setup(pb_bench_scenario *scenario, pb_context *context, VkRen
 
     scenario->user_data = state;
     scenario->info.draw_calls = 1;
+    scenario->info.visible_draw_calls = 1;
     scenario->info.index_count = SPHERE_STACKS * SPHERE_SECTORS * 6;
     scenario->info.material_count = 1;
     scenario->info.pixels_shaded = extent.width * extent.height;

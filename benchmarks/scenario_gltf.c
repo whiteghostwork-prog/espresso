@@ -13,6 +13,7 @@
 #include <string.h>
 
 typedef struct gltf_state {
+    pb_bench_scenario *scenario;
     pb_pbr_forward_pass *pass;
     pb_gltf_scene *scene;
 } gltf_state;
@@ -79,7 +80,9 @@ static bool gltf_setup(pb_bench_scenario *scenario, pb_context *context, VkRende
     }
 
     scenario->user_data = state;
+    state->scenario = scenario;
     scenario->info.draw_calls = pb_gltf_scene_draw_count(state->scene);
+    scenario->info.visible_draw_calls = scenario->info.draw_calls;
     scenario->info.index_count = gltf_total_index_count(state->scene);
     scenario->info.material_count = pb_gltf_scene_material_count(state->scene);
     scenario->info.pixels_shaded = extent.width * extent.height;
@@ -122,6 +125,10 @@ static void gltf_record(VkCommandBuffer cmd, VkExtent2D extent, void *user_data)
     }
 
     pb_pbr_forward_pass_record(state->pass, cmd, extent, state->scene, 0.0f);
+
+    if (state->scenario) {
+        state->scenario->info.visible_draw_calls = pb_pbr_forward_pass_last_visible_draw_count(state->pass);
+    }
 }
 
 bool pb_bench_scenario_gltf_init(

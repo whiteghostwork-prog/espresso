@@ -304,6 +304,8 @@ static bool run_benchmark(
         pb_bench_stats_compute(gpu_transfer, cfg->sample_frames, &metrics->gpu_transfer_ns);
     }
 
+    *info = scenario.info;
+
     free(gpu_total);
     free(gpu_render_pass);
     free(gpu_vertex);
@@ -395,10 +397,11 @@ static void print_human_report(
         cfg->show_fps ? ", fps" : "");
 
     printf("\n  workload\n");
-    printf("  %10s %10s %10s %10s\n", "draws", "indices", "materials", "pixels");
+    printf("  %10s %10s %10s %10s %10s\n", "draws", "visible", "indices", "materials", "pixels");
     printf(
-        "  %10u %10u %10u %10u\n",
+        "  %10u %10u %10u %10u %10u\n",
         info->draw_calls,
+        info->visible_draw_calls,
         info->index_count,
         info->material_count,
         info->pixels_shaded);
@@ -490,6 +493,7 @@ static void print_json_report(
     fprintf(out, "  \"fps\": %s,\n", cfg->show_fps ? "true" : "false");
     fprintf(out, "  \"info\": {\n");
     fprintf(out, "    \"draw_calls\": %u,\n", info->draw_calls);
+    fprintf(out, "    \"visible_draw_calls\": %u,\n", info->visible_draw_calls);
     fprintf(out, "    \"index_count\": %u,\n", info->index_count);
     fprintf(out, "    \"material_count\": %u,\n", info->material_count);
     fprintf(out, "    \"pixels_shaded\": %u\n", info->pixels_shaded);
