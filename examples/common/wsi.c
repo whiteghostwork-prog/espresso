@@ -1134,6 +1134,11 @@ VkCommandBuffer pb_example_wsi_command_buffer(const pb_example_wsi *wsi)
     return wsi->command_buffers[wsi->frame_index];
 }
 
+uint32_t pb_example_wsi_frame_index(const pb_example_wsi *wsi)
+{
+    return wsi ? wsi->frame_index : 0;
+}
+
 void pb_example_wsi_set_pre_render(
     pb_example_wsi *wsi,
     pb_example_wsi_pre_render_fn callback,

@@ -28,17 +28,30 @@ static char g_frag_spv[512];
 static double g_scroll_y;
 
 typedef struct gltf_viewer_ctx {
+    pb_example_wsi *wsi;
     pb_pbr_forward_pass *pass;
     pb_gltf_scene *scene;
 } gltf_viewer_ctx;
 
+static void gltf_sync_frame_slot(gltf_viewer_ctx *ctx)
+{
+    if (!ctx || !ctx->wsi || !ctx->pass || !ctx->scene) {
+        return;
+    }
+
+    const uint32_t frame_slot = pb_example_wsi_frame_index(ctx->wsi);
+    pb_gltf_scene_set_frame_slot(ctx->scene, frame_slot);
+    pb_pbr_forward_pass_set_frame_slot(ctx->pass, frame_slot);
+}
+
 static void gltf_pre_render(VkCommandBuffer cmd, VkExtent2D extent, void *user_data)
 {
-    const gltf_viewer_ctx *ctx = user_data;
+    gltf_viewer_ctx *ctx = user_data;
     if (!ctx || !ctx->pass || !ctx->scene) {
         return;
     }
 
+    gltf_sync_frame_slot(ctx);
     pb_pbr_forward_pass_record_shadow_map(ctx->pass, cmd, extent, ctx->scene);
 }
 
@@ -171,6 +184,7 @@ int main(int argc, char **argv)
     }
 
     gltf_viewer_ctx viewer_ctx = {
+        .wsi = wsi,
         .pass = pass,
         .scene = scene,
     };
@@ -231,6 +245,8 @@ int main(int argc, char **argv)
         const bool left_down = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
 
         pb_example_camera_update(cam, mouse_dx, mouse_dy, scroll_dy, left_down, dt);
+
+        gltf_sync_frame_slot(&viewer_ctx);
 
         if (pb_gltf_scene_animation_count(scene) > 0) {
             const uint32_t clip = (uint32_t)clip_index;

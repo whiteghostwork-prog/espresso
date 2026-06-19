@@ -56,6 +56,7 @@ VkRenderPass pb_example_wsi_render_pass(const pb_example_wsi *wsi);
 VkSampleCountFlagBits pb_example_wsi_msaa_samples(const pb_example_wsi *wsi);
 VkExtent2D pb_example_wsi_extent(const pb_example_wsi *wsi);
 VkCommandBuffer pb_example_wsi_command_buffer(const pb_example_wsi *wsi);
+uint32_t pb_example_wsi_frame_index(const pb_example_wsi *wsi);
 
 void pb_example_wsi_set_stats_enabled(pb_example_wsi *wsi, bool enabled);
 bool pb_example_wsi_stats_enabled(const pb_example_wsi *wsi);
