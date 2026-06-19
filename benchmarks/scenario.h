@@ -41,4 +41,10 @@ bool pb_bench_scenario_gltf_init(
     VkExtent2D extent,
     const char *model_path);
 
+bool pb_bench_scenario_gltf_instanced_init(
+    pb_bench_scenario *scenario,
+    pb_context *context,
+    VkExtent2D extent,
+    const char *scenario_arg);
+
 #endif

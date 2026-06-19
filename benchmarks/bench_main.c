@@ -54,6 +54,7 @@ static void print_usage(const char *prog)
         "  clear                 Empty render pass (clear only)\n"
         "  sphere                PBR sphere with IBL and material maps\n"
         "  gltf <path>           glTF model via PBR forward pass\n"
+        "  gltf_instanced [N]    N copies of test_cube via GPU instancing (default 64)\n"
         "\n"
         "Options:\n"
         "  --width W             Framebuffer width (default 1920)\n"
@@ -193,6 +194,10 @@ static bool init_scenario(
             return false;
         }
         return pb_bench_scenario_gltf_init(scenario, context, extent, cfg->scenario_arg);
+    }
+
+    if (strcmp(cfg->scenario_name, "gltf_instanced") == 0) {
+        return pb_bench_scenario_gltf_instanced_init(scenario, context, extent, cfg->scenario_arg);
     }
 
     fprintf(stderr, "unknown scenario: %s\n", cfg->scenario_name);

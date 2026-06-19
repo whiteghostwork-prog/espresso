@@ -9,6 +9,7 @@ add_executable(peaberry_bench
     scenario_clear.c
     scenario_sphere.c
     scenario_gltf.c
+    scenario_gltf_instanced.c
 )
 
 target_include_directories(peaberry_bench
