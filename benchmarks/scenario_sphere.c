@@ -19,6 +19,7 @@ enum {
 
 typedef struct sphere_state {
     pb_sphere_pass *pass;
+    float time_seconds;
 } sphere_state;
 
 static bool sphere_setup(pb_bench_scenario *scenario, pb_context *context, VkRenderPass render_pass, VkExtent2D extent)
@@ -83,6 +84,16 @@ static void sphere_teardown(pb_bench_scenario *scenario)
     scenario->user_data = NULL;
 }
 
+static void sphere_window_tick(pb_bench_scenario *scenario, const pb_bench_window_tick *tick)
+{
+    sphere_state *state = scenario ? scenario->user_data : NULL;
+    if (!state || !tick) {
+        return;
+    }
+
+    state->time_seconds = tick->time_seconds;
+}
+
 static void sphere_record(VkCommandBuffer cmd, VkExtent2D extent, void *user_data)
 {
     const sphere_state *state = user_data;
@@ -90,7 +101,7 @@ static void sphere_record(VkCommandBuffer cmd, VkExtent2D extent, void *user_dat
         return;
     }
 
-    pb_sphere_pass_record(state->pass, cmd, extent, 0.0f);
+    pb_sphere_pass_record(state->pass, cmd, extent, state->time_seconds);
 }
 
 bool pb_bench_scenario_sphere_init(pb_bench_scenario *scenario, pb_context *context, VkExtent2D extent)
@@ -104,6 +115,7 @@ bool pb_bench_scenario_sphere_init(pb_bench_scenario *scenario, pb_context *cont
     scenario->setup = sphere_setup;
     scenario->teardown = sphere_teardown;
     scenario->record = sphere_record;
+    scenario->window_tick = sphere_window_tick;
     (void)context;
     (void)extent;
     return true;

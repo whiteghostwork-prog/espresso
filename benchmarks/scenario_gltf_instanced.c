@@ -6,6 +6,7 @@
 #include "bench_paths.h"
 #include "scenario.h"
 
+#include "camera.h"
 #include "peaberry/peaberry_gltf.h"
 #include "peaberry/peaberry_math.h"
 
@@ -29,6 +30,7 @@ typedef struct gltf_instanced_state {
     pb_gltf_scene *scene;
     pb_mat4 *transforms;
     uint32_t instance_count;
+    float time_seconds;
 } gltf_instanced_state;
 
 static bool parse_instanced_config(const char *arg, gltf_instanced_config *cfg)
@@ -201,6 +203,33 @@ static void gltf_instanced_pre_record(VkCommandBuffer cmd, VkExtent2D extent, vo
     pb_pbr_forward_pass_record_shadow_map(state->pass, cmd, extent, state->scene);
 }
 
+static void gltf_instanced_apply_window_motion(gltf_instanced_state *state, const pb_bench_window_tick *tick)
+{
+    if (!state || !tick || !state->pass || !state->scene || !tick->camera) {
+        return;
+    }
+
+    state->time_seconds = tick->time_seconds;
+
+    pb_gltf_scene_set_frame_slot(state->scene, tick->frame_slot);
+    pb_pbr_forward_pass_set_frame_slot(state->pass, tick->frame_slot);
+
+    pb_mat4 view;
+    pb_mat4 proj;
+    pb_vec3 cam_pos;
+    pb_example_camera_get_view(tick->camera, view);
+    const float aspect =
+        tick->extent.height > 0 ? (float)tick->extent.width / (float)tick->extent.height : 1.0f;
+    pb_example_camera_get_proj(tick->camera, aspect, proj);
+    pb_example_camera_get_position(tick->camera, cam_pos);
+    pb_pbr_forward_pass_set_camera(state->pass, view, proj, cam_pos);
+}
+
+static void gltf_instanced_window_tick(pb_bench_scenario *scenario, const pb_bench_window_tick *tick)
+{
+    gltf_instanced_apply_window_motion(scenario ? scenario->user_data : NULL, tick);
+}
+
 static void gltf_instanced_record(VkCommandBuffer cmd, VkExtent2D extent, void *user_data)
 {
     const gltf_instanced_state *state = user_data;
@@ -208,7 +237,7 @@ static void gltf_instanced_record(VkCommandBuffer cmd, VkExtent2D extent, void *
         return;
     }
 
-    pb_pbr_forward_pass_record(state->pass, cmd, extent, state->scene, 0.0f);
+    pb_pbr_forward_pass_record(state->pass, cmd, extent, state->scene, state->time_seconds);
 
     if (state->scenario) {
         state->scenario->info.visible_draw_calls = pb_pbr_forward_pass_last_visible_draw_count(state->pass);
@@ -237,6 +266,7 @@ bool pb_bench_scenario_gltf_instanced_init(
     scenario->teardown = gltf_instanced_teardown;
     scenario->pre_record = gltf_instanced_pre_record;
     scenario->record = gltf_instanced_record;
+    scenario->window_tick = gltf_instanced_window_tick;
     scenario->user_data = cfg;
     (void)context;
     (void)extent;

@@ -8,6 +8,7 @@
 #include "bench_baseline.h"
 #include "bench_stats.h"
 #include "bench_target.h"
+#include "bench_window.h"
 #include "scenario.h"
 
 #include "peaberry/peaberry.h"
@@ -29,6 +30,7 @@ typedef struct pb_bench_config {
     bool json_output;
     bool detailed;
     bool show_fps;
+    bool window_mode;
     const char *baseline_path;
     float tolerance_percent;
     const char *scenario_name;
@@ -53,7 +55,8 @@ static void print_usage(const char *prog)
         "Scenarios:\n"
         "  clear                 Empty render pass (clear only)\n"
         "  sphere                PBR sphere with IBL and material maps\n"
-        "  gltf <path>           glTF model via PBR forward pass\n"
+        "  gltf <path>           glTF model via PBR forward pass (shadows off)\n"
+        "  gltf_shadows [path]   glTF forward + shadow pass (default test_cube)\n"
         "  gltf_instanced [N]    N copies of test_cube via GPU instancing (default 64)\n"
         "\n"
         "Options:\n"
@@ -64,6 +67,7 @@ static void print_usage(const char *prog)
         "  --json                Print JSON instead of a table\n"
         "  --detailed            Pipeline-stage GPU timestamps (vertex/fragment/transfer)\n"
         "  --fps                 Include derived FPS in output (from frame times)\n"
+        "  --window              Present frames in a window; print stats when done\n"
         "  --compare PATH        Compare p95 against baseline JSON\n"
         "  --baseline PATH       Alias for --compare\n"
         "  --tolerance PCT       Regression tolerance percent (default 5)\n",
@@ -90,6 +94,7 @@ enum {
     PB_BENCH_OPT_COMPARE = 1001,
     PB_BENCH_OPT_DETAILED = 1002,
     PB_BENCH_OPT_FPS = 1003,
+    PB_BENCH_OPT_WINDOW = 1004,
 };
 
 static bool parse_config(int argc, char **argv, pb_bench_config *cfg)
@@ -104,6 +109,7 @@ static bool parse_config(int argc, char **argv, pb_bench_config *cfg)
         { "compare", required_argument, NULL, PB_BENCH_OPT_COMPARE },
         { "detailed", no_argument, NULL, PB_BENCH_OPT_DETAILED },
         { "fps", no_argument, NULL, PB_BENCH_OPT_FPS },
+        { "window", no_argument, NULL, PB_BENCH_OPT_WINDOW },
         { "tolerance", required_argument, NULL, 't' },
         { "help", no_argument, NULL, '?' },
         { NULL, 0, NULL, 0 },
@@ -154,6 +160,9 @@ static bool parse_config(int argc, char **argv, pb_bench_config *cfg)
         case PB_BENCH_OPT_FPS:
             cfg->show_fps = true;
             break;
+        case PB_BENCH_OPT_WINDOW:
+            cfg->window_mode = true;
+            break;
         case 't':
             cfg->tolerance_percent = strtof(optarg, NULL);
             break;
@@ -200,16 +209,22 @@ static bool init_scenario(
         return pb_bench_scenario_gltf_instanced_init(scenario, context, extent, cfg->scenario_arg);
     }
 
+    if (strcmp(cfg->scenario_name, "gltf_shadows") == 0) {
+        return pb_bench_scenario_gltf_shadows_init(scenario, context, extent, cfg->scenario_arg);
+    }
+
     fprintf(stderr, "unknown scenario: %s\n", cfg->scenario_name);
     return false;
 }
 
-static bool run_benchmark(
+static bool run_benchmark_headless(
     const pb_bench_config *cfg,
     pb_bench_metric_set *metrics,
     pb_bench_scenario_info *info,
     char *gpu_name,
-    size_t gpu_name_size)
+    size_t gpu_name_size,
+    uint32_t *actual_width,
+    uint32_t *actual_height)
 {
     pb_context *context = pb_context_create(
         &(pb_context_desc){
@@ -249,6 +264,13 @@ static bool run_benchmark(
     }
 
     *info = scenario.info;
+
+    if (actual_width) {
+        *actual_width = extent.width;
+    }
+    if (actual_height) {
+        *actual_height = extent.height;
+    }
 
     uint64_t *gpu_total = calloc(cfg->sample_frames, sizeof(*gpu_total));
     uint64_t *gpu_render_pass = calloc(cfg->sample_frames, sizeof(*gpu_render_pass));
@@ -322,6 +344,165 @@ static bool run_benchmark(
     return true;
 }
 
+static bool run_benchmark_window(
+    const pb_bench_config *cfg,
+    pb_bench_metric_set *metrics,
+    pb_bench_scenario_info *info,
+    char *gpu_name,
+    size_t gpu_name_size,
+    uint32_t *actual_width,
+    uint32_t *actual_height)
+{
+    pb_context *context = pb_context_create(
+        &(pb_context_desc){
+            .app_name = "peaberry_bench",
+            .enable_validation = false,
+            .enable_surface = true,
+        });
+    if (!context) {
+        fprintf(stderr, "failed to create Vulkan context\n");
+        return false;
+    }
+
+    const VkExtent2D requested = { cfg->width, cfg->height };
+    pb_bench_scenario scenario = {0};
+    if (!init_scenario(&scenario, cfg, context, requested)) {
+        pb_context_destroy(context);
+        return false;
+    }
+
+    char title[128];
+    snprintf(title, sizeof(title), "peaberry_bench: %s", cfg->scenario_name);
+
+    pb_bench_window *window = NULL;
+    if (!pb_bench_window_create(
+            &window,
+            context,
+            cfg->width,
+            cfg->height,
+            title,
+            &scenario,
+            cfg->detailed)) {
+        fprintf(stderr, "failed to create benchmark window\n");
+        pb_context_destroy(context);
+        return false;
+    }
+
+    if (!pb_context_device_ready(context)) {
+        fprintf(stderr, "failed to initialize windowed Vulkan device\n");
+        pb_bench_window_destroy(window);
+        pb_context_destroy(context);
+        return false;
+    }
+
+    if (gpu_name && gpu_name_size > 0) {
+        VkPhysicalDeviceProperties props;
+        vkGetPhysicalDeviceProperties(pb_context_physical_device(context), &props);
+        snprintf(gpu_name, gpu_name_size, "%s", props.deviceName);
+    }
+
+    const VkExtent2D extent = pb_bench_window_extent(window);
+    if (actual_width) {
+        *actual_width = extent.width;
+    }
+    if (actual_height) {
+        *actual_height = extent.height;
+    }
+
+    *info = scenario.info;
+
+    uint64_t *gpu_total = calloc(cfg->sample_frames, sizeof(*gpu_total));
+    uint64_t *gpu_render_pass = calloc(cfg->sample_frames, sizeof(*gpu_render_pass));
+    uint64_t *gpu_vertex = cfg->detailed ? calloc(cfg->sample_frames, sizeof(*gpu_vertex)) : NULL;
+    uint64_t *gpu_fragment = cfg->detailed ? calloc(cfg->sample_frames, sizeof(*gpu_fragment)) : NULL;
+    uint64_t *gpu_transfer = cfg->detailed ? calloc(cfg->sample_frames, sizeof(*gpu_transfer)) : NULL;
+    uint64_t *cpu_submit = calloc(cfg->sample_frames, sizeof(*cpu_submit));
+    if (!gpu_total || !gpu_render_pass || !cpu_submit ||
+        (cfg->detailed && (!gpu_vertex || !gpu_fragment || !gpu_transfer))) {
+        free(gpu_total);
+        free(gpu_render_pass);
+        free(gpu_vertex);
+        free(gpu_fragment);
+        free(gpu_transfer);
+        free(cpu_submit);
+        pb_bench_window_destroy(window);
+        pb_context_destroy(context);
+        return false;
+    }
+
+    const uint32_t total_frames = cfg->warmup_frames + cfg->sample_frames;
+    uint32_t sample_index = 0;
+
+    for (uint32_t frame = 0; frame < total_frames;) {
+        pb_bench_frame bench_frame;
+        if (!pb_bench_window_run_frame(window, &bench_frame)) {
+            if (pb_bench_window_should_close(window)) {
+                fprintf(stderr, "benchmark window closed before run completed\n");
+                free(gpu_total);
+                free(gpu_render_pass);
+                free(gpu_vertex);
+                free(gpu_fragment);
+                free(gpu_transfer);
+                free(cpu_submit);
+                pb_bench_window_destroy(window);
+                pb_context_destroy(context);
+                return false;
+            }
+            continue;
+        }
+
+        if (frame >= cfg->warmup_frames) {
+            gpu_total[sample_index] = bench_frame.gpu_total_ns;
+            gpu_render_pass[sample_index] = bench_frame.gpu_render_pass_ns;
+            cpu_submit[sample_index] = bench_frame.cpu_submit_to_idle_ns;
+            if (cfg->detailed) {
+                gpu_vertex[sample_index] = bench_frame.gpu_vertex_ns;
+                gpu_fragment[sample_index] = bench_frame.gpu_fragment_ns;
+                gpu_transfer[sample_index] = bench_frame.gpu_transfer_ns;
+            }
+            sample_index++;
+        }
+        frame++;
+    }
+
+    pb_bench_stats_compute(gpu_total, cfg->sample_frames, &metrics->gpu_total_ns);
+    pb_bench_stats_compute(gpu_render_pass, cfg->sample_frames, &metrics->gpu_render_pass_ns);
+    pb_bench_stats_compute(cpu_submit, cfg->sample_frames, &metrics->cpu_submit_to_idle_ns);
+    if (cfg->detailed) {
+        pb_bench_stats_compute(gpu_vertex, cfg->sample_frames, &metrics->gpu_vertex_ns);
+        pb_bench_stats_compute(gpu_fragment, cfg->sample_frames, &metrics->gpu_fragment_ns);
+        pb_bench_stats_compute(gpu_transfer, cfg->sample_frames, &metrics->gpu_transfer_ns);
+    }
+
+    *info = scenario.info;
+
+    free(gpu_total);
+    free(gpu_render_pass);
+    free(gpu_vertex);
+    free(gpu_fragment);
+    free(gpu_transfer);
+    free(cpu_submit);
+    pb_bench_window_destroy(window);
+    pb_context_destroy(context);
+    return true;
+}
+
+static bool run_benchmark(
+    const pb_bench_config *cfg,
+    pb_bench_metric_set *metrics,
+    pb_bench_scenario_info *info,
+    char *gpu_name,
+    size_t gpu_name_size,
+    uint32_t *actual_width,
+    uint32_t *actual_height)
+{
+    if (cfg->window_mode) {
+        return run_benchmark_window(cfg, metrics, info, gpu_name, gpu_name_size, actual_width, actual_height);
+    }
+
+    return run_benchmark_headless(cfg, metrics, info, gpu_name, gpu_name_size, actual_width, actual_height);
+}
+
 enum {
     PB_BENCH_COL_METRIC = 22,
     PB_BENCH_COL_VALUE = 10,
@@ -390,14 +571,17 @@ static void print_fps_row(const char *label, const pb_bench_stats *stats)
 static void print_human_report(
     const pb_bench_config *cfg,
     const pb_bench_metric_set *metrics,
-    const pb_bench_scenario_info *info)
+    const pb_bench_scenario_info *info,
+    uint32_t actual_width,
+    uint32_t actual_height)
 {
-    printf("peaberry_bench: %s (%ux%u, warmup=%u, samples=%u%s%s)\n",
+    printf("peaberry_bench: %s (%ux%u, warmup=%u, samples=%u%s%s%s)\n",
         cfg->scenario_name,
-        cfg->width,
-        cfg->height,
+        actual_width,
+        actual_height,
         cfg->warmup_frames,
         cfg->sample_frames,
+        cfg->window_mode ? ", window" : ", headless",
         cfg->detailed ? ", detailed" : "",
         cfg->show_fps ? ", fps" : "");
 
@@ -479,7 +663,9 @@ static void print_json_report(
     const pb_bench_config *cfg,
     const pb_bench_metric_set *metrics,
     const pb_bench_scenario_info *info,
-    const char *gpu_name)
+    const char *gpu_name,
+    uint32_t actual_width,
+    uint32_t actual_height)
 {
     FILE *out = cfg->json_output ? stdout : stdout;
     fprintf(out, "{\n");
@@ -487,12 +673,12 @@ static void print_json_report(
     if (gpu_name && gpu_name[0] != '\0') {
         fprintf(out, "  \"gpu\": \"%s\",\n", gpu_name);
     }
-    fprintf(out, "  \"mode\": \"headless\",\n");
+    fprintf(out, "  \"mode\": \"%s\",\n", cfg->window_mode ? "window" : "headless");
     fprintf(out, "  \"scenario\": \"%s\",\n", cfg->scenario_name);
     if (cfg->scenario_arg) {
         fprintf(out, "  \"scenario_arg\": \"%s\",\n", cfg->scenario_arg);
     }
-    fprintf(out, "  \"resolution\": {\"width\": %u, \"height\": %u},\n", cfg->width, cfg->height);
+    fprintf(out, "  \"resolution\": {\"width\": %u, \"height\": %u},\n", actual_width, actual_height);
     fprintf(out, "  \"frames\": {\"warmup\": %u, \"samples\": %u},\n", cfg->warmup_frames, cfg->sample_frames);
     fprintf(out, "  \"detailed\": %s,\n", cfg->detailed ? "true" : "false");
     fprintf(out, "  \"fps\": %s,\n", cfg->show_fps ? "true" : "false");
@@ -567,14 +753,16 @@ int main(int argc, char **argv)
     pb_bench_metric_set metrics = {0};
     pb_bench_scenario_info info = {0};
     char gpu_name[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE] = {0};
-    if (!run_benchmark(&cfg, &metrics, &info, gpu_name, sizeof(gpu_name))) {
+    uint32_t actual_width = cfg.width;
+    uint32_t actual_height = cfg.height;
+    if (!run_benchmark(&cfg, &metrics, &info, gpu_name, sizeof(gpu_name), &actual_width, &actual_height)) {
         return EXIT_FAILURE;
     }
 
     if (cfg.json_output) {
-        print_json_report(&cfg, &metrics, &info, gpu_name);
+        print_json_report(&cfg, &metrics, &info, gpu_name, actual_width, actual_height);
     } else {
-        print_human_report(&cfg, &metrics, &info);
+        print_human_report(&cfg, &metrics, &info, actual_width, actual_height);
     }
 
     if (!check_baseline(&cfg, &metrics, gpu_name)) {

@@ -35,6 +35,7 @@ typedef struct pb_example_wsi_desc {
     uint32_t height;
     const char *title;
     bool enable_stats;
+    bool disable_msaa;
 } pb_example_wsi_desc;
 
 pb_example_wsi *pb_example_wsi_create(const pb_example_wsi_desc *desc);
@@ -46,6 +47,9 @@ void *pb_example_wsi_window(const pb_example_wsi *wsi);
 
 bool pb_example_wsi_begin_frame(pb_example_wsi *wsi, float r, float g, float b, float a);
 bool pb_example_wsi_end_frame(pb_example_wsi *wsi);
+
+void pb_example_wsi_set_bench_timing(pb_example_wsi *wsi, pb_rhi_query_pool *query_pool, bool detailed);
+bool pb_example_wsi_end_frame_bench(pb_example_wsi *wsi, pb_bench_frame *out_frame);
 
 void pb_example_wsi_set_pre_render(
     pb_example_wsi *wsi,

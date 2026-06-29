@@ -41,4 +41,7 @@ void pb_example_camera_get_view(const pb_example_camera *cam, pb_mat4 view);
 void pb_example_camera_get_proj(const pb_example_camera *cam, float aspect, pb_mat4 proj);
 void pb_example_camera_get_position(const pb_example_camera *cam, pb_vec3 pos);
 
+/* Advance azimuth for a passive turntable preview (window benchmarks). */
+void pb_example_camera_orbit_auto(pb_example_camera *cam, float dt, float azimuth_speed_rad_s);
+
 #endif

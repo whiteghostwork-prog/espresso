@@ -74,7 +74,8 @@ static void print_usage(const char *prog)
     fprintf(stderr, "  Example: %s assets/models/test_cube.gltf\n", prog);
     fprintf(stderr, "  Khronos sample: scripts/download_damaged_helmet.sh\n");
     fprintf(stderr, "  Rigged sample: scripts/download_rigged_simple.sh\n");
-    fprintf(stderr, "  Controls: left-drag orbit, scroll/Q/E zoom, S shadow debug, Esc quit\n");
+    fprintf(stderr, "  Controls: left-drag orbit, scroll/Q/E zoom, S shadow overlay (optional), Esc quit\n");
+    fprintf(stderr, "  Default view is full-color PBR; press S only to preview shadow coverage\n");
 }
 
 int main(int argc, char **argv)
@@ -209,6 +210,9 @@ int main(int argc, char **argv)
         if (key_s_down && !key_s_was_down) {
             shadow_debug = !shadow_debug;
             pb_pbr_forward_pass_set_shadow_debug(pass, shadow_debug);
+            glfwSetWindowTitle(
+                window,
+                shadow_debug ? "peaberry gltf [shadow overlay]" : "peaberry gltf");
         }
         key_s_was_down = key_s_down;
 

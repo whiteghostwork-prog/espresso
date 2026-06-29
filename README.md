@@ -17,4 +17,8 @@ cmake --build build --parallel
 ```bash
 ./build/examples/peaberry_gltf assets/models/test_animation.gltf
 ./build/benchmarks/peaberry_bench clear --frames 60 --warmup 10
+./build/benchmarks/peaberry_bench gltf_shadows --frames 100
+./build/benchmarks/peaberry_bench gltf_shadows --window --frames 100
 ```
+
+Add `--window` to present frames on screen during the run; timing stats print to the console when the window closes. Headless (no flag) is the default for CI.

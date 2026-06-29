@@ -61,6 +61,7 @@ struct pb_example_wsi {
     VkImageView msaa_color_view;
     bool stats_enabled;
     bool stats_have_gpu_sample;
+    bool disable_msaa;
     pb_rhi_query_pool *stats_query_pool;
     uint64_t stats_wall_start_ns;
     uint64_t stats_submit_time_ns[PB_MAX_FRAMES_IN_FLIGHT];
@@ -70,6 +71,9 @@ struct pb_example_wsi {
     char base_title[128];
     pb_example_wsi_pre_render_fn pre_render;
     void *pre_render_user_data;
+    pb_rhi_query_pool *bench_query_pool;
+    bool bench_detailed;
+    uint64_t bench_submit_start_ns;
 };
 
 static void framebuffer_size_callback(GLFWwindow *window, int width, int height)
@@ -751,7 +755,9 @@ static bool init_swapchain(pb_example_wsi *wsi)
         return false;
     }
 
-    wsi->msaa_samples = pb_context_choose_msaa_samples(wsi->context, VK_SAMPLE_COUNT_4_BIT);
+    wsi->msaa_samples = wsi->disable_msaa
+        ? VK_SAMPLE_COUNT_1_BIT
+        : pb_context_choose_msaa_samples(wsi->context, VK_SAMPLE_COUNT_4_BIT);
 
     if (!create_render_pass(wsi)) {
         return false;
@@ -854,6 +860,7 @@ pb_example_wsi *pb_example_wsi_create(const pb_example_wsi_desc *desc)
     wsi->context = desc->context;
     wsi->width = desc->width ? desc->width : 1280;
     wsi->height = desc->height ? desc->height : 720;
+    wsi->disable_msaa = desc->disable_msaa;
 
     if (!glfwInit()) {
         free(wsi);
@@ -1061,6 +1068,15 @@ bool pb_example_wsi_begin_frame(pb_example_wsi *wsi, float r, float g, float b, 
             VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
     }
 
+    if (wsi->bench_query_pool) {
+        pb_rhi_query_pool_cmd_reset(cmd, wsi->bench_query_pool);
+        pb_rhi_query_pool_write_timestamp(
+            cmd,
+            wsi->bench_query_pool,
+            PB_RHI_TS_CMD_START,
+            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT);
+    }
+
     if (wsi->pre_render) {
         wsi->pre_render(cmd, wsi->extent, wsi->pre_render_user_data);
     }
@@ -1096,6 +1112,14 @@ bool pb_example_wsi_begin_frame(pb_example_wsi *wsi, float r, float g, float b, 
         pb_rhi_query_pool_write_timestamp(
             cmd,
             wsi->stats_query_pool,
+            PB_RHI_TS_RENDER_PASS_START,
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+    }
+
+    if (wsi->bench_query_pool) {
+        pb_rhi_query_pool_write_timestamp(
+            cmd,
+            wsi->bench_query_pool,
             PB_RHI_TS_RENDER_PASS_START,
             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
     }
@@ -1150,6 +1174,127 @@ void pb_example_wsi_set_pre_render(
 
     wsi->pre_render = callback;
     wsi->pre_render_user_data = user_data;
+}
+
+void pb_example_wsi_set_bench_timing(pb_example_wsi *wsi, pb_rhi_query_pool *query_pool, bool detailed)
+{
+    if (!wsi) {
+        return;
+    }
+
+    wsi->bench_query_pool = query_pool;
+    wsi->bench_detailed = detailed;
+}
+
+bool pb_example_wsi_end_frame_bench(pb_example_wsi *wsi, pb_bench_frame *out_frame)
+{
+    if (!wsi || !out_frame || !wsi->bench_query_pool) {
+        return false;
+    }
+
+    pb_bench_frame_zero(out_frame);
+
+    VkCommandBuffer cmd = wsi->command_buffers[wsi->frame_index];
+
+    if (wsi->bench_detailed) {
+        pb_rhi_query_pool_write_timestamp(
+            cmd,
+            wsi->bench_query_pool,
+            PB_RHI_TS_DETAILED_VERTEX,
+            VK_PIPELINE_STAGE_VERTEX_SHADER_BIT);
+        pb_rhi_query_pool_write_timestamp(
+            cmd,
+            wsi->bench_query_pool,
+            PB_RHI_TS_DETAILED_FRAGMENT,
+            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+        pb_rhi_query_pool_write_timestamp(
+            cmd,
+            wsi->bench_query_pool,
+            PB_RHI_TS_DETAILED_RENDER_PASS_END,
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+        vkCmdEndRenderPass(cmd);
+        pb_rhi_query_pool_write_timestamp(
+            cmd,
+            wsi->bench_query_pool,
+            PB_RHI_TS_DETAILED_TRANSFER,
+            VK_PIPELINE_STAGE_TRANSFER_BIT);
+        pb_rhi_query_pool_write_timestamp(
+            cmd,
+            wsi->bench_query_pool,
+            PB_RHI_TS_DETAILED_CMD_END,
+            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+    } else {
+        pb_rhi_query_pool_write_timestamp(
+            cmd,
+            wsi->bench_query_pool,
+            PB_RHI_TS_RENDER_PASS_END,
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+        vkCmdEndRenderPass(cmd);
+        pb_rhi_query_pool_write_timestamp(
+            cmd,
+            wsi->bench_query_pool,
+            PB_RHI_TS_CMD_END,
+            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+    }
+
+    if (vkEndCommandBuffer(cmd) != VK_SUCCESS) {
+        return false;
+    }
+
+    wsi->bench_submit_start_ns = pb_bench_now_ns();
+
+    VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    VkSubmitInfo submit_info = {
+        .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores = &wsi->image_available[wsi->frame_index],
+        .pWaitDstStageMask = &wait_stage,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &cmd,
+        .signalSemaphoreCount = 1,
+        .pSignalSemaphores = &wsi->render_finished[wsi->frame_index],
+    };
+
+    if (vkQueueSubmit(pb_context_graphics_queue(wsi->context), 1, &submit_info, wsi->in_flight[wsi->frame_index]) !=
+        VK_SUCCESS) {
+        return false;
+    }
+
+    VkPresentInfoKHR present_info = {
+        .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores = &wsi->render_finished[wsi->frame_index],
+        .swapchainCount = 1,
+        .pSwapchains = &wsi->swapchain,
+        .pImageIndices = &wsi->current_image,
+    };
+
+    VkResult present_result = vkQueuePresentKHR(pb_context_present_queue(wsi->context), &present_info);
+    if (present_result == VK_ERROR_OUT_OF_DATE_KHR || present_result == VK_SUBOPTIMAL_KHR) {
+        wsi->framebuffer_resized = true;
+    } else if (present_result != VK_SUCCESS) {
+        return false;
+    }
+
+    VkDevice device = pb_context_device(wsi->context);
+    if (vkWaitForFences(device, 1, &wsi->in_flight[wsi->frame_index], VK_TRUE, UINT64_MAX) != VK_SUCCESS) {
+        return false;
+    }
+
+    out_frame->cpu_submit_to_idle_ns = pb_bench_now_ns() - wsi->bench_submit_start_ns;
+
+    const uint32_t query_count = pb_rhi_query_pool_query_count(wsi->bench_query_pool);
+    uint64_t *ticks = calloc(query_count, sizeof(*ticks));
+    if (!ticks) {
+        return false;
+    }
+
+    const bool ok = pb_rhi_query_pool_read_timestamps(wsi->context, wsi->bench_query_pool, ticks, query_count) &&
+        pb_rhi_query_pool_fill_frame(wsi->context, wsi->bench_query_pool, ticks, query_count, out_frame);
+    free(ticks);
+
+    wsi->frame_index = (wsi->frame_index + 1) % PB_MAX_FRAMES_IN_FLIGHT;
+    return ok;
 }
 
 bool pb_example_wsi_end_frame(pb_example_wsi *wsi)

@@ -6,6 +6,7 @@ add_executable(peaberry_bench
     bench_baseline.c
     bench_stats.c
     bench_target.c
+    bench_window.c
     scenario_clear.c
     scenario_sphere.c
     scenario_gltf.c
@@ -26,6 +27,7 @@ target_compile_definitions(peaberry_bench PRIVATE
 target_link_libraries(peaberry_bench
     PRIVATE
         peaberry
+        peaberry_example_wsi
         m
 )
 

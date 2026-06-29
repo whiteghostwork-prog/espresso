@@ -136,3 +136,12 @@ void pb_example_camera_get_position(const pb_example_camera *cam, pb_vec3 pos)
     pos[1] = cam->target[1] + cam->distance * sinf(cam->elevation_rad);
     pos[2] = cam->target[2] + cam->distance * cos_el * cosf(cam->azimuth_rad);
 }
+
+void pb_example_camera_orbit_auto(pb_example_camera *cam, float dt, float azimuth_speed_rad_s)
+{
+    if (!cam || dt <= 0.0f) {
+        return;
+    }
+
+    cam->azimuth_rad += azimuth_speed_rad_s * dt;
+}
