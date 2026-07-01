@@ -1,0 +1,835 @@
+{
+  "asset": {
+    "version": "2.0",
+    "generator": "peaberry gen_stress_scene.py (Phase 7.8)"
+  },
+  "buffers": [
+    {
+      "byteLength": 840,
+      "uri": "../models/test_cube.bin"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteOffset": 0,
+      "byteLength": 288,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 288,
+      "byteLength": 288,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 576,
+      "byteLength": 192,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteOffset": 768,
+      "byteLength": 72,
+      "target": 34963
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 24,
+      "type": "VEC3",
+      "max": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "min": [
+        -0.5,
+        -0.5,
+        -0.5
+      ]
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 24,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 24,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5123,
+      "count": 36,
+      "type": "SCALAR"
+    }
+  ],
+  "materials": [
+    {
+      "name": "stress_red",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.85,
+          0.2,
+          0.2,
+          1.0
+        ],
+        "metallicFactor": 0.0,
+        "roughnessFactor": 0.45
+      }
+    },
+    {
+      "name": "stress_green",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.2,
+          0.75,
+          0.35,
+          1.0
+        ],
+        "metallicFactor": 0.5,
+        "roughnessFactor": 0.35
+      }
+    },
+    {
+      "name": "stress_blue",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.25,
+          0.45,
+          0.9,
+          1.0
+        ],
+        "metallicFactor": 0.8,
+        "roughnessFactor": 0.25
+      }
+    },
+    {
+      "name": "stress_gold",
+      "pbrMetallicRoughness": {
+        "baseColorFactor": [
+          0.95,
+          0.8,
+          0.2,
+          1.0
+        ],
+        "metallicFactor": 0.2,
+        "roughnessFactor": 0.7
+      }
+    }
+  ],
+  "meshes": [
+    {
+      "name": "cube_mat_0",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TEXCOORD_0": 2
+          },
+          "indices": 3,
+          "material": 0
+        }
+      ]
+    },
+    {
+      "name": "cube_mat_1",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TEXCOORD_0": 2
+          },
+          "indices": 3,
+          "material": 1
+        }
+      ]
+    },
+    {
+      "name": "cube_mat_2",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TEXCOORD_0": 2
+          },
+          "indices": 3,
+          "material": 2
+        }
+      ]
+    },
+    {
+      "name": "cube_mat_3",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TEXCOORD_0": 2
+          },
+          "indices": 3,
+          "material": 3
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "cube_0_0",
+      "mesh": 0,
+      "translation": [
+        -7.0,
+        0.0,
+        -7.0
+      ]
+    },
+    {
+      "name": "cube_1_0",
+      "mesh": 1,
+      "translation": [
+        -5.0,
+        0.0,
+        -7.0
+      ]
+    },
+    {
+      "name": "cube_2_0",
+      "mesh": 2,
+      "translation": [
+        -3.0,
+        0.0,
+        -7.0
+      ]
+    },
+    {
+      "name": "cube_3_0",
+      "mesh": 3,
+      "translation": [
+        -1.0,
+        0.0,
+        -7.0
+      ]
+    },
+    {
+      "name": "cube_4_0",
+      "mesh": 0,
+      "translation": [
+        1.0,
+        0.0,
+        -7.0
+      ]
+    },
+    {
+      "name": "cube_5_0",
+      "mesh": 1,
+      "translation": [
+        3.0,
+        0.0,
+        -7.0
+      ]
+    },
+    {
+      "name": "cube_6_0",
+      "mesh": 2,
+      "translation": [
+        5.0,
+        0.0,
+        -7.0
+      ]
+    },
+    {
+      "name": "cube_7_0",
+      "mesh": 3,
+      "translation": [
+        7.0,
+        0.0,
+        -7.0
+      ]
+    },
+    {
+      "name": "cube_0_1",
+      "mesh": 1,
+      "translation": [
+        -7.0,
+        0.0,
+        -5.0
+      ]
+    },
+    {
+      "name": "cube_1_1",
+      "mesh": 2,
+      "translation": [
+        -5.0,
+        0.0,
+        -5.0
+      ]
+    },
+    {
+      "name": "cube_2_1",
+      "mesh": 3,
+      "translation": [
+        -3.0,
+        0.0,
+        -5.0
+      ]
+    },
+    {
+      "name": "cube_3_1",
+      "mesh": 0,
+      "translation": [
+        -1.0,
+        0.0,
+        -5.0
+      ]
+    },
+    {
+      "name": "cube_4_1",
+      "mesh": 1,
+      "translation": [
+        1.0,
+        0.0,
+        -5.0
+      ]
+    },
+    {
+      "name": "cube_5_1",
+      "mesh": 2,
+      "translation": [
+        3.0,
+        0.0,
+        -5.0
+      ]
+    },
+    {
+      "name": "cube_6_1",
+      "mesh": 3,
+      "translation": [
+        5.0,
+        0.0,
+        -5.0
+      ]
+    },
+    {
+      "name": "cube_7_1",
+      "mesh": 0,
+      "translation": [
+        7.0,
+        0.0,
+        -5.0
+      ]
+    },
+    {
+      "name": "cube_0_2",
+      "mesh": 2,
+      "translation": [
+        -7.0,
+        0.0,
+        -3.0
+      ]
+    },
+    {
+      "name": "cube_1_2",
+      "mesh": 3,
+      "translation": [
+        -5.0,
+        0.0,
+        -3.0
+      ]
+    },
+    {
+      "name": "cube_2_2",
+      "mesh": 0,
+      "translation": [
+        -3.0,
+        0.0,
+        -3.0
+      ]
+    },
+    {
+      "name": "cube_3_2",
+      "mesh": 1,
+      "translation": [
+        -1.0,
+        0.0,
+        -3.0
+      ]
+    },
+    {
+      "name": "cube_4_2",
+      "mesh": 2,
+      "translation": [
+        1.0,
+        0.0,
+        -3.0
+      ]
+    },
+    {
+      "name": "cube_5_2",
+      "mesh": 3,
+      "translation": [
+        3.0,
+        0.0,
+        -3.0
+      ]
+    },
+    {
+      "name": "cube_6_2",
+      "mesh": 0,
+      "translation": [
+        5.0,
+        0.0,
+        -3.0
+      ]
+    },
+    {
+      "name": "cube_7_2",
+      "mesh": 1,
+      "translation": [
+        7.0,
+        0.0,
+        -3.0
+      ]
+    },
+    {
+      "name": "cube_0_3",
+      "mesh": 3,
+      "translation": [
+        -7.0,
+        0.0,
+        -1.0
+      ]
+    },
+    {
+      "name": "cube_1_3",
+      "mesh": 0,
+      "translation": [
+        -5.0,
+        0.0,
+        -1.0
+      ]
+    },
+    {
+      "name": "cube_2_3",
+      "mesh": 1,
+      "translation": [
+        -3.0,
+        0.0,
+        -1.0
+      ]
+    },
+    {
+      "name": "cube_3_3",
+      "mesh": 2,
+      "translation": [
+        -1.0,
+        0.0,
+        -1.0
+      ]
+    },
+    {
+      "name": "cube_4_3",
+      "mesh": 3,
+      "translation": [
+        1.0,
+        0.0,
+        -1.0
+      ]
+    },
+    {
+      "name": "cube_5_3",
+      "mesh": 0,
+      "translation": [
+        3.0,
+        0.0,
+        -1.0
+      ]
+    },
+    {
+      "name": "cube_6_3",
+      "mesh": 1,
+      "translation": [
+        5.0,
+        0.0,
+        -1.0
+      ]
+    },
+    {
+      "name": "cube_7_3",
+      "mesh": 2,
+      "translation": [
+        7.0,
+        0.0,
+        -1.0
+      ]
+    },
+    {
+      "name": "cube_0_4",
+      "mesh": 0,
+      "translation": [
+        -7.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "cube_1_4",
+      "mesh": 1,
+      "translation": [
+        -5.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "cube_2_4",
+      "mesh": 2,
+      "translation": [
+        -3.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "cube_3_4",
+      "mesh": 3,
+      "translation": [
+        -1.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "cube_4_4",
+      "mesh": 0,
+      "translation": [
+        1.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "cube_5_4",
+      "mesh": 1,
+      "translation": [
+        3.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "cube_6_4",
+      "mesh": 2,
+      "translation": [
+        5.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "cube_7_4",
+      "mesh": 3,
+      "translation": [
+        7.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "cube_0_5",
+      "mesh": 1,
+      "translation": [
+        -7.0,
+        0.0,
+        3.0
+      ]
+    },
+    {
+      "name": "cube_1_5",
+      "mesh": 2,
+      "translation": [
+        -5.0,
+        0.0,
+        3.0
+      ]
+    },
+    {
+      "name": "cube_2_5",
+      "mesh": 3,
+      "translation": [
+        -3.0,
+        0.0,
+        3.0
+      ]
+    },
+    {
+      "name": "cube_3_5",
+      "mesh": 0,
+      "translation": [
+        -1.0,
+        0.0,
+        3.0
+      ]
+    },
+    {
+      "name": "cube_4_5",
+      "mesh": 1,
+      "translation": [
+        1.0,
+        0.0,
+        3.0
+      ]
+    },
+    {
+      "name": "cube_5_5",
+      "mesh": 2,
+      "translation": [
+        3.0,
+        0.0,
+        3.0
+      ]
+    },
+    {
+      "name": "cube_6_5",
+      "mesh": 3,
+      "translation": [
+        5.0,
+        0.0,
+        3.0
+      ]
+    },
+    {
+      "name": "cube_7_5",
+      "mesh": 0,
+      "translation": [
+        7.0,
+        0.0,
+        3.0
+      ]
+    },
+    {
+      "name": "cube_0_6",
+      "mesh": 2,
+      "translation": [
+        -7.0,
+        0.0,
+        5.0
+      ]
+    },
+    {
+      "name": "cube_1_6",
+      "mesh": 3,
+      "translation": [
+        -5.0,
+        0.0,
+        5.0
+      ]
+    },
+    {
+      "name": "cube_2_6",
+      "mesh": 0,
+      "translation": [
+        -3.0,
+        0.0,
+        5.0
+      ]
+    },
+    {
+      "name": "cube_3_6",
+      "mesh": 1,
+      "translation": [
+        -1.0,
+        0.0,
+        5.0
+      ]
+    },
+    {
+      "name": "cube_4_6",
+      "mesh": 2,
+      "translation": [
+        1.0,
+        0.0,
+        5.0
+      ]
+    },
+    {
+      "name": "cube_5_6",
+      "mesh": 3,
+      "translation": [
+        3.0,
+        0.0,
+        5.0
+      ]
+    },
+    {
+      "name": "cube_6_6",
+      "mesh": 0,
+      "translation": [
+        5.0,
+        0.0,
+        5.0
+      ]
+    },
+    {
+      "name": "cube_7_6",
+      "mesh": 1,
+      "translation": [
+        7.0,
+        0.0,
+        5.0
+      ]
+    },
+    {
+      "name": "cube_0_7",
+      "mesh": 3,
+      "translation": [
+        -7.0,
+        0.0,
+        7.0
+      ]
+    },
+    {
+      "name": "cube_1_7",
+      "mesh": 0,
+      "translation": [
+        -5.0,
+        0.0,
+        7.0
+      ]
+    },
+    {
+      "name": "cube_2_7",
+      "mesh": 1,
+      "translation": [
+        -3.0,
+        0.0,
+        7.0
+      ]
+    },
+    {
+      "name": "cube_3_7",
+      "mesh": 2,
+      "translation": [
+        -1.0,
+        0.0,
+        7.0
+      ]
+    },
+    {
+      "name": "cube_4_7",
+      "mesh": 3,
+      "translation": [
+        1.0,
+        0.0,
+        7.0
+      ]
+    },
+    {
+      "name": "cube_5_7",
+      "mesh": 0,
+      "translation": [
+        3.0,
+        0.0,
+        7.0
+      ]
+    },
+    {
+      "name": "cube_6_7",
+      "mesh": 1,
+      "translation": [
+        5.0,
+        0.0,
+        7.0
+      ]
+    },
+    {
+      "name": "cube_7_7",
+      "mesh": 2,
+      "translation": [
+        7.0,
+        0.0,
+        7.0
+      ]
+    }
+  ],
+  "scenes": [
+    {
+      "nodes": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63
+      ]
+    }
+  ],
+  "scene": 0
+}

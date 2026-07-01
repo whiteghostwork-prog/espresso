@@ -19,7 +19,20 @@ typedef struct pb_bench_stats {
     uint32_t count;
 } pb_bench_stats;
 
+typedef struct pb_bench_fps_stats {
+    double min;
+    double p50;
+    double p95;
+    double p99;
+    double max;
+    double mean;
+    double stddev;
+    uint32_t count;
+} pb_bench_fps_stats;
+
 void pb_bench_stats_compute(const uint64_t *samples, uint32_t count, pb_bench_stats *out);
+
+void pb_bench_fps_stats_compute(const uint64_t *time_ns_samples, uint32_t count, pb_bench_fps_stats *out);
 
 uint64_t pb_bench_stats_percentile(const uint64_t *sorted, uint32_t count, uint32_t percentile);
 

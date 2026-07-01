@@ -13,7 +13,6 @@
 
 #include "peaberry/peaberry.h"
 #include "peaberry/peaberry_bench.h"
-#include "peaberry/peaberry_frame_metrics.h"
 #include "peaberry/peaberry_vk.h"
 
 #include <getopt.h>
@@ -29,7 +28,6 @@ typedef struct pb_bench_config {
     uint32_t sample_frames;
     bool json_output;
     bool detailed;
-    bool show_fps;
     bool window_mode;
     const char *baseline_path;
     float tolerance_percent;
@@ -44,6 +42,12 @@ typedef struct pb_bench_metric_set {
     pb_bench_stats gpu_fragment_ns;
     pb_bench_stats gpu_transfer_ns;
     pb_bench_stats cpu_submit_to_idle_ns;
+    pb_bench_fps_stats gpu_total_fps;
+    pb_bench_fps_stats gpu_render_pass_fps;
+    pb_bench_fps_stats gpu_vertex_fps;
+    pb_bench_fps_stats gpu_fragment_fps;
+    pb_bench_fps_stats gpu_transfer_fps;
+    pb_bench_fps_stats cpu_submit_to_idle_fps;
 } pb_bench_metric_set;
 
 static void print_usage(const char *prog)
@@ -58,6 +62,9 @@ static void print_usage(const char *prog)
         "  gltf <path>           glTF model via PBR forward pass (shadows off)\n"
         "  gltf_shadows [path]   glTF forward + shadow pass (default test_cube)\n"
         "  gltf_instanced [N]    N copies of test_cube via GPU instancing (default 64)\n"
+        "  gltf_stress [path]    Multi-draw stress grid (default scenes/stress_grid.gltf)\n"
+        "  gltf_stress_shadows [path]\n"
+        "                        Stress grid + shadow pass (default scenes/stress_grid.gltf)\n"
         "\n"
         "Options:\n"
         "  --width W             Framebuffer width (default 1920)\n"
@@ -66,8 +73,7 @@ static void print_usage(const char *prog)
         "  --warmup N            Warmup frames discarded (default 10)\n"
         "  --json                Print JSON instead of a table\n"
         "  --detailed            Pipeline-stage GPU timestamps (vertex/fragment/transfer)\n"
-        "  --fps                 Include derived FPS in output (from frame times)\n"
-        "  --window              Present frames in a window; print stats when done\n"
+        "  --window              Present frames in a window with live FPS in title\n"
         "  --compare PATH        Compare p95 against baseline JSON\n"
         "  --baseline PATH       Alias for --compare\n"
         "  --tolerance PCT       Regression tolerance percent (default 5)\n",
@@ -93,7 +99,6 @@ static bool parse_u32(const char *text, uint32_t *out)
 enum {
     PB_BENCH_OPT_COMPARE = 1001,
     PB_BENCH_OPT_DETAILED = 1002,
-    PB_BENCH_OPT_FPS = 1003,
     PB_BENCH_OPT_WINDOW = 1004,
 };
 
@@ -108,7 +113,6 @@ static bool parse_config(int argc, char **argv, pb_bench_config *cfg)
         { "baseline", required_argument, NULL, 'b' },
         { "compare", required_argument, NULL, PB_BENCH_OPT_COMPARE },
         { "detailed", no_argument, NULL, PB_BENCH_OPT_DETAILED },
-        { "fps", no_argument, NULL, PB_BENCH_OPT_FPS },
         { "window", no_argument, NULL, PB_BENCH_OPT_WINDOW },
         { "tolerance", required_argument, NULL, 't' },
         { "help", no_argument, NULL, '?' },
@@ -156,9 +160,6 @@ static bool parse_config(int argc, char **argv, pb_bench_config *cfg)
             break;
         case PB_BENCH_OPT_DETAILED:
             cfg->detailed = true;
-            break;
-        case PB_BENCH_OPT_FPS:
-            cfg->show_fps = true;
             break;
         case PB_BENCH_OPT_WINDOW:
             cfg->window_mode = true;
@@ -211,6 +212,14 @@ static bool init_scenario(
 
     if (strcmp(cfg->scenario_name, "gltf_shadows") == 0) {
         return pb_bench_scenario_gltf_shadows_init(scenario, context, extent, cfg->scenario_arg);
+    }
+
+    if (strcmp(cfg->scenario_name, "gltf_stress") == 0) {
+        return pb_bench_scenario_gltf_stress_init(scenario, context, extent, cfg->scenario_arg);
+    }
+
+    if (strcmp(cfg->scenario_name, "gltf_stress_shadows") == 0) {
+        return pb_bench_scenario_gltf_stress_shadows_init(scenario, context, extent, cfg->scenario_arg);
     }
 
     fprintf(stderr, "unknown scenario: %s\n", cfg->scenario_name);
@@ -325,10 +334,16 @@ static bool run_benchmark_headless(
     pb_bench_stats_compute(gpu_total, cfg->sample_frames, &metrics->gpu_total_ns);
     pb_bench_stats_compute(gpu_render_pass, cfg->sample_frames, &metrics->gpu_render_pass_ns);
     pb_bench_stats_compute(cpu_submit, cfg->sample_frames, &metrics->cpu_submit_to_idle_ns);
+    pb_bench_fps_stats_compute(gpu_total, cfg->sample_frames, &metrics->gpu_total_fps);
+    pb_bench_fps_stats_compute(gpu_render_pass, cfg->sample_frames, &metrics->gpu_render_pass_fps);
+    pb_bench_fps_stats_compute(cpu_submit, cfg->sample_frames, &metrics->cpu_submit_to_idle_fps);
     if (cfg->detailed) {
         pb_bench_stats_compute(gpu_vertex, cfg->sample_frames, &metrics->gpu_vertex_ns);
         pb_bench_stats_compute(gpu_fragment, cfg->sample_frames, &metrics->gpu_fragment_ns);
         pb_bench_stats_compute(gpu_transfer, cfg->sample_frames, &metrics->gpu_transfer_ns);
+        pb_bench_fps_stats_compute(gpu_vertex, cfg->sample_frames, &metrics->gpu_vertex_fps);
+        pb_bench_fps_stats_compute(gpu_fragment, cfg->sample_frames, &metrics->gpu_fragment_fps);
+        pb_bench_fps_stats_compute(gpu_transfer, cfg->sample_frames, &metrics->gpu_transfer_fps);
     }
 
     *info = scenario.info;
@@ -468,10 +483,16 @@ static bool run_benchmark_window(
     pb_bench_stats_compute(gpu_total, cfg->sample_frames, &metrics->gpu_total_ns);
     pb_bench_stats_compute(gpu_render_pass, cfg->sample_frames, &metrics->gpu_render_pass_ns);
     pb_bench_stats_compute(cpu_submit, cfg->sample_frames, &metrics->cpu_submit_to_idle_ns);
+    pb_bench_fps_stats_compute(gpu_total, cfg->sample_frames, &metrics->gpu_total_fps);
+    pb_bench_fps_stats_compute(gpu_render_pass, cfg->sample_frames, &metrics->gpu_render_pass_fps);
+    pb_bench_fps_stats_compute(cpu_submit, cfg->sample_frames, &metrics->cpu_submit_to_idle_fps);
     if (cfg->detailed) {
         pb_bench_stats_compute(gpu_vertex, cfg->sample_frames, &metrics->gpu_vertex_ns);
         pb_bench_stats_compute(gpu_fragment, cfg->sample_frames, &metrics->gpu_fragment_ns);
         pb_bench_stats_compute(gpu_transfer, cfg->sample_frames, &metrics->gpu_transfer_ns);
+        pb_bench_fps_stats_compute(gpu_vertex, cfg->sample_frames, &metrics->gpu_vertex_fps);
+        pb_bench_fps_stats_compute(gpu_fragment, cfg->sample_frames, &metrics->gpu_fragment_fps);
+        pb_bench_fps_stats_compute(gpu_transfer, cfg->sample_frames, &metrics->gpu_transfer_fps);
     }
 
     *info = scenario.info;
@@ -554,18 +575,18 @@ static void print_fps_header(void)
         "mean");
 }
 
-static void print_fps_row(const char *label, const pb_bench_stats *stats)
+static void print_fps_row(const char *label, const pb_bench_fps_stats *stats)
 {
     printf(
         "  %-*s %10.1f %10.1f %10.1f %10.1f %10.1f %10.1f\n",
         PB_BENCH_COL_METRIC,
         label,
-        pb_frame_metrics_fps_from_ns(stats->min),
-        pb_frame_metrics_fps_from_ns(stats->p50),
-        pb_frame_metrics_fps_from_ns(stats->p95),
-        pb_frame_metrics_fps_from_ns(stats->p99),
-        pb_frame_metrics_fps_from_ns(stats->max),
-        pb_frame_metrics_fps_from_ns(stats->mean));
+        stats->min,
+        stats->p50,
+        stats->p95,
+        stats->p99,
+        stats->max,
+        stats->mean);
 }
 
 static void print_human_report(
@@ -575,15 +596,14 @@ static void print_human_report(
     uint32_t actual_width,
     uint32_t actual_height)
 {
-    printf("peaberry_bench: %s (%ux%u, warmup=%u, samples=%u%s%s%s)\n",
+    printf("peaberry_bench: %s (%ux%u, warmup=%u, samples=%u%s%s)\n",
         cfg->scenario_name,
         actual_width,
         actual_height,
         cfg->warmup_frames,
         cfg->sample_frames,
         cfg->window_mode ? ", window" : ", headless",
-        cfg->detailed ? ", detailed" : "",
-        cfg->show_fps ? ", fps" : "");
+        cfg->detailed ? ", detailed" : "");
 
     printf("\n  workload\n");
     printf("  %10s %10s %10s %10s %10s\n", "draws", "visible", "indices", "materials", "pixels");
@@ -606,34 +626,34 @@ static void print_human_report(
     }
     print_stats_row("cpu_submit_to_idle_ns", &metrics->cpu_submit_to_idle_ns);
 
-    if (cfg->show_fps) {
-        printf("\n  derived fps (1e9 / frame_ns)\n");
-        print_fps_header();
-        print_fps_row("gpu_total", &metrics->gpu_total_ns);
-        print_fps_row("gpu_render_pass", &metrics->gpu_render_pass_ns);
-        if (cfg->detailed) {
-            print_fps_row("gpu_vertex", &metrics->gpu_vertex_ns);
-            print_fps_row("gpu_fragment", &metrics->gpu_fragment_ns);
-            print_fps_row("gpu_transfer", &metrics->gpu_transfer_ns);
-        }
-        print_fps_row("cpu_submit_to_idle", &metrics->cpu_submit_to_idle_ns);
+    printf("\n  fps (1e9 / frame_ns)\n");
+    print_fps_header();
+    print_fps_row("gpu_total", &metrics->gpu_total_fps);
+    print_fps_row("gpu_render_pass", &metrics->gpu_render_pass_fps);
+    if (cfg->detailed) {
+        print_fps_row("gpu_vertex", &metrics->gpu_vertex_fps);
+        print_fps_row("gpu_fragment", &metrics->gpu_fragment_fps);
+        print_fps_row("gpu_transfer", &metrics->gpu_transfer_fps);
+    }
+    if (!cfg->window_mode) {
+        print_fps_row("cpu_submit_to_idle", &metrics->cpu_submit_to_idle_fps);
     }
 
     printf("\n");
 }
 
-static void print_json_fps_field(FILE *out, const char *name, const pb_bench_stats *stats, bool trailing_comma)
+static void print_json_fps_field(FILE *out, const char *name, const pb_bench_fps_stats *stats, bool trailing_comma)
 {
     fprintf(
         out,
         "      \"%s\": {\"min\": %.3f, \"p50\": %.3f, \"p95\": %.3f, \"p99\": %.3f, \"max\": %.3f, \"mean\": %.3f}",
         name,
-        pb_frame_metrics_fps_from_ns(stats->min),
-        pb_frame_metrics_fps_from_ns(stats->p50),
-        pb_frame_metrics_fps_from_ns(stats->p95),
-        pb_frame_metrics_fps_from_ns(stats->p99),
-        pb_frame_metrics_fps_from_ns(stats->max),
-        pb_frame_metrics_fps_from_ns(stats->mean));
+        stats->min,
+        stats->p50,
+        stats->p95,
+        stats->p99,
+        stats->max,
+        stats->mean);
     if (trailing_comma) {
         fputc(',', out);
     }
@@ -681,7 +701,6 @@ static void print_json_report(
     fprintf(out, "  \"resolution\": {\"width\": %u, \"height\": %u},\n", actual_width, actual_height);
     fprintf(out, "  \"frames\": {\"warmup\": %u, \"samples\": %u},\n", cfg->warmup_frames, cfg->sample_frames);
     fprintf(out, "  \"detailed\": %s,\n", cfg->detailed ? "true" : "false");
-    fprintf(out, "  \"fps\": %s,\n", cfg->show_fps ? "true" : "false");
     fprintf(out, "  \"info\": {\n");
     fprintf(out, "    \"draw_calls\": %u,\n", info->draw_calls);
     fprintf(out, "    \"visible_draw_calls\": %u,\n", info->visible_draw_calls);
@@ -697,22 +716,20 @@ static void print_json_report(
         print_json_uint64_field(out, "gpu_fragment_ns", &metrics->gpu_fragment_ns, true);
         print_json_uint64_field(out, "gpu_transfer_ns", &metrics->gpu_transfer_ns, true);
     }
-    print_json_uint64_field(out, "cpu_submit_to_idle_ns", &metrics->cpu_submit_to_idle_ns, cfg->show_fps);
-    fprintf(out, "  }");
-    if (cfg->show_fps) {
-        fprintf(out, ",\n  \"fps_derived\": {\n");
-        print_json_fps_field(out, "gpu_total", &metrics->gpu_total_ns, true);
-        print_json_fps_field(out, "gpu_render_pass", &metrics->gpu_render_pass_ns, true);
-        if (cfg->detailed) {
-            print_json_fps_field(out, "gpu_vertex", &metrics->gpu_vertex_ns, true);
-            print_json_fps_field(out, "gpu_fragment", &metrics->gpu_fragment_ns, true);
-            print_json_fps_field(out, "gpu_transfer", &metrics->gpu_transfer_ns, true);
-        }
-        print_json_fps_field(out, "cpu_submit_to_idle", &metrics->cpu_submit_to_idle_ns, false);
-        fprintf(out, "  }\n");
-    } else {
-        fputc('\n', out);
+    print_json_uint64_field(out, "cpu_submit_to_idle_ns", &metrics->cpu_submit_to_idle_ns, false);
+    fprintf(out, "  },\n");
+    fprintf(out, "  \"fps\": {\n");
+    print_json_fps_field(out, "gpu_total", &metrics->gpu_total_fps, true);
+    print_json_fps_field(out, "gpu_render_pass", &metrics->gpu_render_pass_fps, cfg->detailed || !cfg->window_mode);
+    if (cfg->detailed) {
+        print_json_fps_field(out, "gpu_vertex", &metrics->gpu_vertex_fps, true);
+        print_json_fps_field(out, "gpu_fragment", &metrics->gpu_fragment_fps, true);
+        print_json_fps_field(out, "gpu_transfer", &metrics->gpu_transfer_fps, !cfg->window_mode);
     }
+    if (!cfg->window_mode) {
+        print_json_fps_field(out, "cpu_submit_to_idle", &metrics->cpu_submit_to_idle_fps, false);
+    }
+    fprintf(out, "  }\n");
     fprintf(out, "}\n");
 }
 

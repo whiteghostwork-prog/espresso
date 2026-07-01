@@ -9,6 +9,8 @@
 #include "peaberry/peaberry.h"
 #include "peaberry/peaberry_bench.h"
 
+#include "camera.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <volk.h>
@@ -46,6 +48,8 @@ typedef struct pb_bench_scenario {
     pb_bench_window_tick_fn window_tick;
     void *user_data;
     pb_bench_scenario_info info;
+    bool has_window_camera;
+    pb_example_camera_desc window_camera;
 } pb_bench_scenario;
 
 bool pb_bench_scenario_clear_init(pb_bench_scenario *scenario, pb_context *context, VkExtent2D extent);
@@ -67,5 +71,17 @@ bool pb_bench_scenario_gltf_instanced_init(
     pb_context *context,
     VkExtent2D extent,
     const char *scenario_arg);
+
+bool pb_bench_scenario_gltf_stress_init(
+    pb_bench_scenario *scenario,
+    pb_context *context,
+    VkExtent2D extent,
+    const char *model_path);
+
+bool pb_bench_scenario_gltf_stress_shadows_init(
+    pb_bench_scenario *scenario,
+    pb_context *context,
+    VkExtent2D extent,
+    const char *model_path);
 
 #endif

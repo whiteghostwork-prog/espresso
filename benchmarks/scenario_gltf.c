@@ -8,6 +8,7 @@
 
 #include "camera.h"
 #include "peaberry/peaberry_gltf.h"
+#include "peaberry/peaberry_math.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -15,20 +16,36 @@
 #include <string.h>
 
 typedef struct gltf_state {
+    uint32_t tag;
     pb_bench_scenario *scenario;
     pb_pbr_forward_pass *pass;
     pb_gltf_scene *scene;
     float time_seconds;
+    bool apply_stress_camera;
 } gltf_state;
 
-typedef struct gltf_shadow_config {
+typedef struct gltf_path_config {
     uint32_t tag;
     char model_path[512];
-} gltf_shadow_config;
+    bool shadows_enabled;
+    bool stress_camera;
+} gltf_path_config;
 
 enum {
-    GLTF_SHADOW_CFG_TAG = 0x68536c67u,
+    GLTF_PATH_CFG_TAG = 0x68536c67u,
+    GLTF_STATE_TAG = 0x68537467u,
 };
+
+static bool gltf_path_scenario_init(
+    pb_bench_scenario *scenario,
+    pb_context *context,
+    VkExtent2D extent,
+    const char *model_path,
+    const char *default_subdir,
+    const char *default_filename,
+    const char *name,
+    bool shadows_enabled,
+    bool stress_camera);
 
 static uint32_t gltf_total_index_count(const pb_gltf_scene *scene)
 {
@@ -44,13 +61,34 @@ static uint32_t gltf_total_index_count(const pb_gltf_scene *scene)
     return total;
 }
 
+static void gltf_apply_stress_headless_camera(pb_pbr_forward_pass *pass, VkExtent2D extent)
+{
+    const pb_vec3 eye = { 16.0f, 12.0f, 16.0f };
+    const pb_vec3 center = { 0.0f, 0.0f, 0.0f };
+    const pb_vec3 up = { 0.0f, 1.0f, 0.0f };
+    pb_mat4 view;
+    pb_mat4 proj;
+
+    pb_mat4_look_at(view, eye, center, up);
+    const float aspect =
+        (extent.width > 0 && extent.height > 0) ? (float)extent.width / (float)extent.height : 1.0f;
+    pb_mat4_perspective(proj, pb_radians(45.0f), aspect, 0.1f, 200.0f);
+    pb_pbr_forward_pass_set_camera(pass, view, proj, eye);
+}
+
+static bool gltf_fill_default_path(char *path, size_t path_size, const char *subdir, const char *filename)
+{
+    return snprintf(path, path_size, "%s/%s/%s", PEABERRY_ASSET_DIR, subdir, filename) < (int)path_size;
+}
+
 static bool gltf_setup_internal(
     pb_bench_scenario *scenario,
     pb_context *context,
     VkRenderPass render_pass,
     VkExtent2D extent,
     const char *model_path,
-    bool shadows_enabled)
+    bool shadows_enabled,
+    bool stress_camera)
 {
     if (!scenario || !model_path) {
         return false;
@@ -68,6 +106,7 @@ static bool gltf_setup_internal(
         return false;
     }
 
+    state->tag = GLTF_STATE_TAG;
     state->scene = pb_gltf_scene_create(
         &(pb_gltf_scene_desc){
             .context = context,
@@ -98,6 +137,11 @@ static bool gltf_setup_internal(
 
     pb_pbr_forward_pass_set_shadows_enabled(state->pass, shadows_enabled);
 
+    state->apply_stress_camera = stress_camera;
+    if (stress_camera) {
+        gltf_apply_stress_headless_camera(state->pass, extent);
+    }
+
     scenario->user_data = state;
     state->scenario = scenario;
     scenario->info.draw_calls = pb_gltf_scene_draw_count(state->scene);
@@ -111,10 +155,10 @@ static bool gltf_setup_internal(
 static bool gltf_setup(pb_bench_scenario *scenario, pb_context *context, VkRenderPass render_pass, VkExtent2D extent)
 {
     const char *model_path = scenario->user_data;
-    return gltf_setup_internal(scenario, context, render_pass, extent, model_path, false);
+    return gltf_setup_internal(scenario, context, render_pass, extent, model_path, false, false);
 }
 
-static bool gltf_shadows_setup(
+static bool gltf_path_setup(
     pb_bench_scenario *scenario,
     pb_context *context,
     VkRenderPass render_pass,
@@ -124,11 +168,18 @@ static bool gltf_shadows_setup(
         return false;
     }
 
-    gltf_shadow_config cfg = *(gltf_shadow_config *)scenario->user_data;
+    gltf_path_config cfg = *(gltf_path_config *)scenario->user_data;
     free(scenario->user_data);
     scenario->user_data = NULL;
 
-    return gltf_setup_internal(scenario, context, render_pass, extent, cfg.model_path, true);
+    return gltf_setup_internal(
+        scenario,
+        context,
+        render_pass,
+        extent,
+        cfg.model_path,
+        cfg.shadows_enabled,
+        cfg.stress_camera);
 }
 
 static void gltf_teardown(pb_bench_scenario *scenario)
@@ -149,16 +200,21 @@ static void gltf_teardown(pb_bench_scenario *scenario)
     scenario->user_data = NULL;
 }
 
-static void gltf_shadows_teardown(pb_bench_scenario *scenario)
+static void gltf_path_teardown(pb_bench_scenario *scenario)
 {
     if (!scenario || !scenario->user_data) {
         return;
     }
 
-    const gltf_shadow_config *cfg = scenario->user_data;
-    if (cfg->tag == GLTF_SHADOW_CFG_TAG) {
+    const uint32_t tag = *(const uint32_t *)scenario->user_data;
+    if (tag == GLTF_PATH_CFG_TAG) {
         free(scenario->user_data);
         scenario->user_data = NULL;
+        return;
+    }
+
+    if (tag == GLTF_STATE_TAG) {
+        gltf_teardown(scenario);
         return;
     }
 
@@ -211,9 +267,14 @@ static void gltf_shadow_pre_record(VkCommandBuffer cmd, VkExtent2D extent, void 
 
 static void gltf_record(VkCommandBuffer cmd, VkExtent2D extent, void *user_data)
 {
-    const gltf_state *state = user_data;
+    gltf_state *state = user_data;
     if (!state || !state->pass || !state->scene) {
         return;
+    }
+
+    if (state->apply_stress_camera &&
+        !(state->scenario && state->scenario->has_window_camera)) {
+        gltf_apply_stress_headless_camera(state->pass, extent);
     }
 
     pb_pbr_forward_pass_record(state->pass, cmd, extent, state->scene, state->time_seconds);
@@ -252,20 +313,44 @@ bool pb_bench_scenario_gltf_shadows_init(
     VkExtent2D extent,
     const char *model_path)
 {
+    return gltf_path_scenario_init(
+        scenario,
+        context,
+        extent,
+        model_path,
+        "models",
+        "test_cube.gltf",
+        "gltf_shadows",
+        true,
+        false);
+}
+
+static bool gltf_path_scenario_init(
+    pb_bench_scenario *scenario,
+    pb_context *context,
+    VkExtent2D extent,
+    const char *model_path,
+    const char *default_subdir,
+    const char *default_filename,
+    const char *name,
+    bool shadows_enabled,
+    bool stress_camera)
+{
     if (!scenario) {
         return false;
     }
 
-    gltf_shadow_config *cfg = calloc(1, sizeof(*cfg));
+    gltf_path_config *cfg = calloc(1, sizeof(*cfg));
     if (!cfg) {
         return false;
     }
 
-    cfg->tag = GLTF_SHADOW_CFG_TAG;
+    cfg->tag = GLTF_PATH_CFG_TAG;
+    cfg->shadows_enabled = shadows_enabled;
+    cfg->stress_camera = stress_camera;
 
     if (!model_path || model_path[0] == '\0') {
-        if (snprintf(cfg->model_path, sizeof(cfg->model_path), "%s/models/test_cube.gltf", PEABERRY_ASSET_DIR) >=
-            (int)sizeof(cfg->model_path)) {
+        if (!gltf_fill_default_path(cfg->model_path, sizeof(cfg->model_path), default_subdir, default_filename)) {
             free(cfg);
             return false;
         }
@@ -275,14 +360,63 @@ bool pb_bench_scenario_gltf_shadows_init(
     }
 
     memset(scenario, 0, sizeof(*scenario));
-    scenario->name = "gltf_shadows";
-    scenario->setup = gltf_shadows_setup;
-    scenario->teardown = gltf_shadows_teardown;
-    scenario->pre_record = gltf_shadow_pre_record;
+    scenario->name = name;
+    scenario->setup = gltf_path_setup;
+    scenario->teardown = gltf_path_teardown;
+    scenario->pre_record = shadows_enabled ? gltf_shadow_pre_record : NULL;
     scenario->record = gltf_record;
     scenario->window_tick = gltf_window_tick;
     scenario->user_data = cfg;
+
+    if (stress_camera) {
+        scenario->has_window_camera = true;
+        scenario->window_camera = (pb_example_camera_desc){
+            .azimuth_rad = 0.6f,
+            .elevation_rad = 0.35f,
+            .distance = 28.0f,
+            .fov_deg = 45.0f,
+            .near_plane = 0.1f,
+            .far_plane = 200.0f,
+        };
+    }
+
     (void)context;
     (void)extent;
     return true;
+}
+
+bool pb_bench_scenario_gltf_stress_init(
+    pb_bench_scenario *scenario,
+    pb_context *context,
+    VkExtent2D extent,
+    const char *model_path)
+{
+    return gltf_path_scenario_init(
+        scenario,
+        context,
+        extent,
+        model_path,
+        "scenes",
+        "stress_grid.gltf",
+        "gltf_stress",
+        false,
+        true);
+}
+
+bool pb_bench_scenario_gltf_stress_shadows_init(
+    pb_bench_scenario *scenario,
+    pb_context *context,
+    VkExtent2D extent,
+    const char *model_path)
+{
+    return gltf_path_scenario_init(
+        scenario,
+        context,
+        extent,
+        model_path,
+        "scenes",
+        "stress_grid.gltf",
+        "gltf_stress_shadows",
+        true,
+        true);
 }
