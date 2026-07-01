@@ -319,7 +319,7 @@ bool pb_bench_scenario_gltf_shadows_init(
         extent,
         model_path,
         "models",
-        "test_cube.gltf",
+        "test_cube_ground.gltf",
         "gltf_shadows",
         true,
         false);

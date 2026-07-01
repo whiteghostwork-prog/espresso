@@ -24,4 +24,6 @@ cmake --build build --parallel
 
 Add `--window` to present frames on screen during the run; the window title shows GPU-derived FPS (no compositor/vsync overhead). Timing stats print to the console when the run finishes. Headless (no flag) is the default for CI.
 
+`gltf_shadows` defaults to `assets/models/test_cube_ground.gltf` (cube + floor for cast shadows). Regenerate with `python3 scripts/gen_test_cube_ground.py`.
+
 Stress scenes (`gltf_stress`, `gltf_stress_shadows`) load `assets/scenes/stress_grid.gltf` (64 draws, 4 materials). Regenerate with `python3 scripts/gen_stress_scene.py -o assets/scenes/stress_grid.gltf`.

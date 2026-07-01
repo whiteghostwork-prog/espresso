@@ -60,7 +60,7 @@ static void print_usage(const char *prog)
         "  clear                 Empty render pass (clear only)\n"
         "  sphere                PBR sphere with IBL and material maps\n"
         "  gltf <path>           glTF model via PBR forward pass (shadows off)\n"
-        "  gltf_shadows [path]   glTF forward + shadow pass (default test_cube)\n"
+        "  gltf_shadows [path]   glTF forward + shadow pass (default test_cube_ground)\n"
         "  gltf_instanced [N]    N copies of test_cube via GPU instancing (default 64)\n"
         "  gltf_stress [path]    Multi-draw stress grid (default scenes/stress_grid.gltf)\n"
         "  gltf_stress_shadows [path]\n"
